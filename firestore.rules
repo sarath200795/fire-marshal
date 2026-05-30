@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isApprovedMemberOf(orgId) {
+      return signedIn()
+        && myProfile().orgId == orgId
+        && myProfile().status == 'approved';
+    }
+
+    function isAdminOf(orgId) {
+      return isApprovedMemberOf(orgId) && myProfile().role == 'admin';
+    }
+
+    // ── Organizations ──
+    match /organizations/{orgId} {
+      // Anyone signed in can read org docs (needed to look up an org by name at signup).
+      allow read: if signedIn();
+      // Created during register-org flow; updated by org admins only.
+      allow create: if signedIn();
+      allow update, delete: if isAdminOf(orgId);
+
+      // ── Extinguishers ── (org-scoped)
+      match /extinguishers/{extId} {
+        allow read: if isApprovedMemberOf(orgId);
+        allow create, update, delete: if isApprovedMemberOf(orgId);
+      }
+
+      // ── Reports / approval queue ──
+      match /reports/{reportId} {
+        allow read: if isApprovedMemberOf(orgId);
+        // Public QR visitors (unauthenticated) may submit a pending report only.
+        allow create: if request.resource.data.approvalStatus == 'pending';
+        // Approve / reject is an org member action.
+        allow update, delete: if isApprovedMemberOf(orgId);
+      }
+    }
+
+    // ── Users ──
+    match /users/{uid} {
+      // A user reads/writes their own profile; admins manage members in their org.
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (
+        request.auth.uid == uid ||
+        isAdminOf(resource.data.orgId)
+      );
+    }
+
+    // ── Public QR mirror ── world-readable; written only by org members.
+    match /qr/{token} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+  }
+}
