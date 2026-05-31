@@ -18,11 +18,13 @@ import {
   serverTimestamp,
   writeBatch,
   limit,
+  startAfter,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS } from './constants'
 import { AUDIT, diffSummary } from './audit'
+import { buildExtinguisherConstraints } from './extinguisherQuery'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -486,6 +488,33 @@ export const EXT_LOAD_CAP = 2000
 export function subscribeExtinguishers(orgId, cb, max = EXT_LOAD_CAP) {
   const q = query(extCol(orgId), orderBy('createdAt', 'desc'), limit(max))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+}
+
+export const PAGE_SIZE = 50
+
+/**
+ * One page of extinguishers via cursor pagination + server-side equality
+ * filters. Returns { rows, nextCursor, hasMore }.
+ *  - filters: { type, capacity, entity, region, status } (use FILTER_ALL to skip)
+ *  - cursor: the last QueryDocumentSnapshot from the previous page (or null)
+ * Excludes soft-deleted (deletedAt == null), newest first.
+ * Requires composite indexes (deletedAt + the filtered field + createdAt) —
+ * Firestore will surface a one-click index link for any missing combo.
+ */
+export async function queryExtinguishersPage(orgId, { filters = {}, cursor = null, pageSize = PAGE_SIZE } = {}) {
+  const constraints = buildExtinguisherConstraints(filters).map((c) => where(c.field, c.op, c.value))
+  const parts = [...constraints, orderBy('createdAt', 'desc')]
+  if (cursor) parts.push(startAfter(cursor))
+  parts.push(limit(pageSize + 1)) // +1 sentinel to detect "has more"
+  const snap = await getDocs(query(extCol(orgId), ...parts))
+  const docs = snap.docs
+  const hasMore = docs.length > pageSize
+  const pageDocs = hasMore ? docs.slice(0, pageSize) : docs
+  return {
+    rows: pageDocs.map((d) => ({ id: d.id, ...d.data() })),
+    nextCursor: pageDocs.length ? pageDocs[pageDocs.length - 1] : null,
+    hasMore,
+  }
 }
 
 export async function getExtinguisher(orgId, id) {
