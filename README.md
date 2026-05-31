@@ -11,13 +11,28 @@ Built with **React (JSX) + Vite**, **Cloud Firestore + Firebase Auth**, **Tailwi
 
 ## Quality & CI
 
-- **Tests:** `npm test` (Vitest) — unit tests for the pure logic libs
+- **Unit tests:** `npm test` (Vitest) — pure logic libs
   (`extinguisherLogic`, `serial`, `defectReports`, `audit`).
-- **CI:** `.github/workflows/ci.yml` runs tests + a production build on every push/PR to `main`.
-  Recommended: enable **branch protection** on `main` (GitHub → Settings → Branches) requiring the
-  `build-and-test` check to pass before merge.
-- **Audit log:** every data change is recorded in an append-only `auditLogs` subcollection and viewable
-  by admins at **/app/audit**. The Firestore rules make these entries immutable (no update/delete).
+- **Security-rules tests:** `npm run test:rules` — boots the Firestore emulator and runs allow/deny
+  cases in `tests/rules/` against [`firestore.rules`](firestore.rules). **Requires Java (a JRE)** for the
+  emulator.
+- **CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs two jobs on every push/PR to
+  `main`: (1) unit tests + production build, (2) the emulator rules tests. Recommended: enable **branch
+  protection** on `main` requiring both checks before merge.
+- **Audit log:** every data change is recorded in an append-only `auditLogs` subcollection, viewable by
+  admins at **/app/audit**. Firestore rules make these entries immutable (no update/delete).
+
+### Security model (multi-tenant isolation)
+The rules enforce, server-side: org docs/users/extinguishers/reports/audit are readable only by
+**approved members of that org**; QR mirror writes are locked to the **owning org**; public QR defect
+reports are validated (enums, size caps) and must reference a **real extinguisher**; extinguisher writes
+are validated against the allowed enums. Signup resolves an org by name via a public, minimal
+`orgIndex/{nameLower}` doc (`{ orgId, name }`) so it never needs read access to the org collection.
+
+> **Publishing & migration:** rules take effect only once published
+> (`firebase deploy --only firestore:rules` or Console → Rules). **One-time backfill:** any organization
+> created *before* this change has no `orgIndex` doc, so name-based signup won't find it — add a doc at
+> `orgIndex/<lowercased org name> = { orgId, name }` for each existing org (Console or a script).
 
 ---
 

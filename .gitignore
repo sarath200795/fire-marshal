@@ -8,4 +8,7 @@ dist-ssr
 .DS_Store
 npm-debug.log*
 
-.vercel
+# Firebase emulator artifacts
+*-debug.log
+firestore-debug.log
+firebase-debug.log

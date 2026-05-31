@@ -6,7 +6,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   setDoc,
   addDoc,
   updateDoc,
@@ -33,6 +32,10 @@ const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
 const userRef = (uid) => doc(db, 'users', uid)
 const qrRef = (token) => doc(db, 'qr', token)
 const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
+// Public, minimal name→org index so signup can look up an org by name WITHOUT
+// reading the (member-only) organizations collection.
+const orgIndexKey = (name) => (name || '').trim().toLowerCase()
+const orgIndexRef = (name) => doc(db, 'orgIndex', orgIndexKey(name))
 
 // ── Audit log ──────────────────────────────────────────────────────────────────
 // Append-only trail. Never let an audit failure break the primary write.
@@ -66,7 +69,7 @@ const extLabelOf = (ext) =>
 
 // ── Organizations & users ─────────────────────────────────────────────────────
 
-/** Create an org + its first admin user atomically. Returns the new orgId. */
+/** Create an org + its first admin user + public name index, atomically. */
 export async function createOrganization({ orgName, address, uid, name, email }) {
   const org = doc(collection(db, 'organizations'))
   const batch = writeBatch(db)
@@ -87,21 +90,22 @@ export async function createOrganization({ orgName, address, uid, name, email })
     status: 'approved',
     createdAt: serverTimestamp(),
   })
+  // Public lookup index (no sensitive fields) so signup can resolve org-by-name
+  // without read access to the organizations collection.
+  batch.set(orgIndexRef(orgName), { orgId: org.id, name: orgName })
   await batch.commit()
   return org.id
 }
 
-/** Find an organization by exact (case-insensitive) name. Returns {id, ...} or null. */
+/**
+ * Find an organization by exact (case-insensitive) name via the public
+ * orgIndex. Returns { id, name } or null. (Only the fields needed at signup.)
+ */
 export async function findOrgByName(orgName) {
-  const q = query(
-    collection(db, 'organizations'),
-    where('nameLower', '==', orgName.trim().toLowerCase()),
-    limit(1)
-  )
-  const snap = await getDocs(q)
-  if (snap.empty) return null
-  const d = snap.docs[0]
-  return { id: d.id, ...d.data() }
+  const snap = await getDoc(orgIndexRef(orgName))
+  if (!snap.exists()) return null
+  const d = snap.data()
+  return { id: d.orgId, name: d.name }
 }
 
 /** Create a pending member who is joining an existing org. */
