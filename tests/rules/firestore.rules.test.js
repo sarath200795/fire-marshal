@@ -150,6 +150,16 @@ describe('public reports', () => {
   })
 })
 
+describe('meta/stats', () => {
+  it('member can read + write stats', async () => {
+    await assertSucceeds(setDoc(doc(member(), 'organizations', ORG_A, 'meta', 'stats'), { total: 5 }))
+    await assertSucceeds(getDoc(doc(member(), 'organizations', ORG_A, 'meta', 'stats')))
+  })
+  it('cross-org stats write denied', async () => {
+    await assertFails(setDoc(doc(adminB(), 'organizations', ORG_A, 'meta', 'stats'), { total: 99 }))
+  })
+})
+
 describe('audit log immutability', () => {
   beforeEach(async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {

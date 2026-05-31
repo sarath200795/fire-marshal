@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   RadialBarChart, RadialBar, Legend, LabelList,
@@ -8,9 +10,12 @@ import {
 import {
   LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search,
 } from 'lucide-react'
-import { PageHeader } from '../components/ui'
+import { PageHeader, Spinner } from '../components/ui'
 import CountUp from '../components/CountUp'
 import { useFleet } from '../context/FleetContext'
+import { useAuth } from '../context/AuthContext'
+import { recomputeStats } from '../lib/firestore'
+import { toDate } from '../lib/extinguisherLogic'
 import {
   fleetSummary, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed, deriveStatus,
 } from '../lib/extinguisherLogic'
@@ -66,8 +71,23 @@ function chipMeta(dim, value) {
 }
 
 export default function Dashboard() {
-  const { extinguishers, capped, loadCap } = useFleet()
+  const { extinguishers, capped, loadCap, stats } = useFleet()
+  const { orgId, isAdmin } = useAuth()
+  const [refreshing, setRefreshing] = useState(false)
   const today = useMemo(() => new Date(), [])
+
+  const refreshMetrics = async () => {
+    setRefreshing(true)
+    try {
+      await recomputeStats(orgId)
+      toast.success('Fleet totals refreshed')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+  const statsAsOf = toDate(stats?.updatedAt)
 
   const [filters, setFilters] = useState(emptyFilters)
   const [search, setSearch] = useState('')
@@ -157,7 +177,47 @@ export default function Dashboard() {
       {capped && (
         <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           <AlertTriangle size={16} />
-          <span>Metrics are based on the most recent <strong>{loadCap.toLocaleString()}</strong> extinguishers (your fleet is larger).</span>
+          <span>The charts below are based on the most recent <strong>{loadCap.toLocaleString()}</strong> extinguishers. The fleet totals below are exact.</span>
+        </div>
+      )}
+
+      {/* Exact fleet-wide totals (maintained by counters; accurate beyond the cap). */}
+      {stats && (
+        <div className="card mb-6 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-ink-950 text-white"><Boxes size={20} /></div>
+              <div>
+                <p className="text-3xl font-black text-ink-900"><CountUp value={stats.total || 0} /></p>
+                <p className="text-sm font-medium text-ink-500">Total extinguishers (entire fleet)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {statsAsOf && <span className="text-xs text-ink-400">as of {format(statsAsOf, 'dd MMM, HH:mm')}</span>}
+              {isAdmin && (
+                <button className="btn-ghost" onClick={refreshMetrics} disabled={refreshing}>
+                  {refreshing ? <Spinner size={16} /> : (<><RefreshCw size={15} /> Refresh totals</>)}
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Object.values(STATUS).map((s) => (
+              <span key={s} className="chip" style={{ backgroundColor: `${STATUS_COLOR[s]}1a`, color: STATUS_COLOR[s] }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: STATUS_COLOR[s] }} />
+                {STATUS_LABEL[s]}: <strong>{(stats.byStatus && stats.byStatus[s]) || 0}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!stats && isAdmin && (
+        <div className="card mb-6 flex items-center justify-between gap-3 p-4">
+          <span className="text-sm text-ink-500">Fleet totals not computed yet.</span>
+          <button className="btn-primary" onClick={refreshMetrics} disabled={refreshing}>
+            {refreshing ? <Spinner size={16} /> : (<><RefreshCw size={15} /> Compute fleet totals</>)}
+          </button>
         </div>
       )}
 

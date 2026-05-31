@@ -6,6 +6,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   addDoc,
   updateDoc,
@@ -62,6 +63,42 @@ async function logAudit(orgId, actor, action, details = {}) {
 export function subscribeAuditLogs(orgId, cb) {
   const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+}
+
+// ── Stats counters (organizations/{orgId}/meta/stats) ────────────────────────
+// Maintained atomically inside each mutation batch so the dashboard's structural
+// totals are exact fleet-wide regardless of the 2,000 load cap.
+
+// Turn a sparse delta object (from statsDeltaFor) into increment() field updates,
+// flattened to dotted paths (e.g. "byStatus.active"). Adds them to an open batch.
+function applyStatsDelta(batch, orgId, delta) {
+  if (!delta) return
+  const fields = {}
+  if (delta.total) fields.total = increment(delta.total)
+  for (const bucket of ['byStatus', 'byType', 'byEntity', 'byRegion']) {
+    const m = delta[bucket]
+    if (!m) continue
+    for (const k of Object.keys(m)) {
+      if (m[k]) fields[`${bucket}.${k}`] = increment(m[k])
+    }
+  }
+  if (Object.keys(fields).length === 0) return
+  fields.updatedAt = serverTimestamp()
+  // set(merge) so the doc is created on first write and increments thereafter.
+  batch.set(statsRef(orgId), fields, { merge: true })
+}
+
+export function subscribeStats(orgId, cb) {
+  return onSnapshot(statsRef(orgId), (snap) => cb(snap.exists() ? snap.data() : null))
+}
+
+/** Full recompute from a one-time read of all extinguishers (admin Refresh / backfill). */
+export async function recomputeStats(orgId) {
+  const snap = await getDocs(extCol(orgId))
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const s = accumulate(list)
+  await setDoc(statsRef(orgId), { ...s, updatedAt: serverTimestamp() })
+  return s
 }
 
 const extLabelOf = (ext) =>
@@ -213,6 +250,7 @@ export async function addExtinguisher(orgId, orgName, data, actor) {
   const batch = writeBatch(db)
   batch.set(ref, ext)
   batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, ref.id, ext))
+  applyStatsDelta(batch, orgId, statsDeltaFor(null, ext))
   await batch.commit()
   await logAudit(orgId, actor, AUDIT.EXT_CREATE, {
     targetId: ref.id,
@@ -229,6 +267,7 @@ export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
   for (let i = 0; i < rows.length; i += 200) {
     const chunk = rows.slice(i, i + 200)
     const batch = writeBatch(db)
+    const created = []
     for (const data of chunk) {
       const ref = doc(extCol(orgId))
       const qrToken = generateQrToken()
@@ -250,8 +289,11 @@ export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
       }
       batch.set(ref, ext)
       batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, ref.id, ext))
+      created.push(ext)
       written++
     }
+    // One stats write per batch (all creates = accumulate of the chunk).
+    applyStatsDelta(batch, orgId, accumulate(created))
     await batch.commit()
   }
   await logAudit(orgId, actor, AUDIT.EXT_BULK_CREATE, {
@@ -340,6 +382,9 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
     await batch.commit()
   }
 
+  // Updates can shift type/entity/region buckets (and creates add rows); a full
+  // recompute is the simplest correct way to reconcile both in one pass.
+  await recomputeStats(orgId)
   await logAudit(orgId, actor, AUDIT.EXT_BULK_UPSERT, {
     summary: `Bulk import: ${created} added, ${updated} updated`,
   })
@@ -361,6 +406,7 @@ export async function updateExtinguisher(orgId, orgName, id, updates, opts = {})
   if (merged.qrToken) {
     batch.set(qrRef(merged.qrToken), mirrorPayload(orgId, orgName, id, merged))
   }
+  applyStatsDelta(batch, orgId, statsDeltaFor(before, merged))
   await batch.commit()
   if (!opts.silent) {
     await logAudit(orgId, opts.actor, opts.action || AUDIT.EXT_UPDATE, {
@@ -383,6 +429,7 @@ export async function deleteExtinguisher(orgId, id, qrToken, actor, label) {
   })
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
+  await recomputeStats(orgId)
   await logAudit(orgId, actor, AUDIT.EXT_DELETE, { targetId: id, targetLabel: label || '' })
 }
 
@@ -400,6 +447,7 @@ export async function bulkDeleteExtinguishers(orgId, items, actor) {
     }
     await batch.commit()
   }
+  await recomputeStats(orgId)
   await logAudit(orgId, actor, AUDIT.EXT_BULK_DELETE, {
     summary: `${items.length} extinguisher(s) deleted`,
   })
@@ -415,6 +463,8 @@ export async function restoreExtinguisher(orgId, orgName, id, actor) {
   if (data.qrToken) {
     batch.set(qrRef(data.qrToken), mirrorPayload(orgId, orgName, id, { ...data, deletedAt: null }))
   }
+  // Restoring re-adds the unit to the active fleet (+1 to its buckets).
+  applyStatsDelta(batch, orgId, statsDeltaFor(null, { ...data, deletedAt: null }))
   await batch.commit()
   await logAudit(orgId, actor, AUDIT.EXT_RESTORE, { targetId: id, targetLabel: extLabelOf(data) })
 }

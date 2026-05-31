@@ -5,6 +5,7 @@ import {
   subscribeReports,
   subscribeOrgUsers,
   subscribeOrg,
+  subscribeStats,
 } from '../lib/firestore'
 import {
   fleetSummary,
@@ -30,6 +31,7 @@ export function FleetProvider({ children }) {
   const [reports, setReports] = useState([])
   const [users, setUsers] = useState([])
   const [org, setOrg] = useState(null)
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -49,11 +51,13 @@ export function FleetProvider({ children }) {
     const u2 = subscribeReports(orgId, setReports)
     const u3 = subscribeOrgUsers(orgId, setUsers)
     const u4 = subscribeOrg(orgId, setOrg)
+    const u5 = subscribeStats(orgId, setStats)
     return () => {
       u1()
       u2()
       u3()
       u4()
+      u5()
     }
   }, [orgId])
 
@@ -67,6 +71,7 @@ export function FleetProvider({ children }) {
     return {
       loading,
       org,
+      stats,
       extinguishers: active,
       deletedExtinguishers,
       // True when the live load hit the cap (full set may be larger).
@@ -84,7 +89,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, loading])
+  }, [extinguishers, reports, users, org, stats, loading])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }
