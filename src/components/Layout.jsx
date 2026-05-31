@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
+import { LEGAL_PAGES } from '../lib/legal'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -188,6 +189,13 @@ export default function Layout() {
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />
         </main>
+
+        <footer className="no-print mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-ink-400 sm:px-6 lg:px-8">
+          <span>© {new Date().getFullYear()} Fire Marshal</span>
+          {LEGAL_PAGES.map((p) => (
+            <Link key={p.kind} to={p.path} className="hover:text-ink-700">{p.label}</Link>
+          ))}
+        </footer>
       </div>
     </div>
   )

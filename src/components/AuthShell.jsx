@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { ShieldCheck, QrCode, BarChart3, Flame } from 'lucide-react'
+import { LEGAL_PAGES } from '../lib/legal'
 
 const FEATURES = [
   { icon: QrCode, text: 'QR-tracked extinguishers, publicly scannable' },
@@ -66,7 +68,14 @@ export default function AuthShell({ children }) {
           <Flame className="text-brand-300" size={220} />
         </motion.div>
 
-        <p className="text-xs text-white/50">© {new Date().getFullYear()} Fire Marshal</p>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/60">
+            {LEGAL_PAGES.map((p) => (
+              <Link key={p.kind} to={p.path} className="hover:text-white">{p.label}</Link>
+            ))}
+          </div>
+          <p className="text-xs text-white/50">© {new Date().getFullYear()} Fire Marshal</p>
+        </div>
       </div>
 
       {/* Right — form */}
@@ -82,6 +91,12 @@ export default function AuthShell({ children }) {
             <span className="text-lg font-extrabold">Fire Marshal</span>
           </div>
           {children}
+          {/* Mobile legal links (the left brand panel is hidden on small screens) */}
+          <div className="mt-8 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-ink-400 lg:hidden">
+            {LEGAL_PAGES.map((p) => (
+              <Link key={p.kind} to={p.path} className="hover:text-ink-700">{p.label}</Link>
+            ))}
+          </div>
         </motion.div>
       </div>
     </div>

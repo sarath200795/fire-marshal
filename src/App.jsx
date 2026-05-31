@@ -14,6 +14,7 @@ const Signup = lazy(() => import('./pages/Signup'))
 const RegisterOrg = lazy(() => import('./pages/RegisterOrg'))
 const PendingApproval = lazy(() => import('./pages/PendingApproval'))
 const PublicQR = lazy(() => import('./pages/PublicQR'))
+const Legal = lazy(() => import('./pages/Legal'))
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Repository = lazy(() => import('./pages/Repository'))
@@ -53,6 +54,10 @@ export default function App() {
           <Route path="/register-org" element={<RegisterOrg />} />
           <Route path="/pending" element={<PendingApproval />} />
           <Route path="/qr/:token" element={<PublicQR />} />
+          <Route path="/privacy" element={<Legal kind="privacy" />} />
+          <Route path="/terms" element={<Legal kind="terms" />} />
+          <Route path="/data-retention" element={<Legal kind="retention" />} />
+          <Route path="/cookies" element={<Legal kind="cookies" />} />
 
           <Route path="/app" element={<AppShell />}>
             <Route index element={<Navigate to="/app/dashboard" replace />} />
