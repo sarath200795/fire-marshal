@@ -11,7 +11,7 @@ import { assignSerials } from '../lib/serial'
 import { BULK_COLUMNS } from '../lib/constants'
 
 export default function BulkUpload() {
-  const { orgId, orgName } = useAuth()
+  const { orgId, orgName, profile } = useAuth()
   const { extinguishers } = useFleet()
   const inputRef = useRef(null)
   const [fileName, setFileName] = useState('')
@@ -77,7 +77,7 @@ export default function BulkUpload() {
     if (!plan || (!plan.creates.length && !plan.updates.length)) return
     setCommitting(true)
     try {
-      const res = await bulkUpsertExtinguishers(orgId, orgName, plan)
+      const res = await bulkUpsertExtinguishers(orgId, orgName, plan, { uid: profile?.uid, name: profile?.name })
       setDone(res)
       toast.success(`${res.created} added, ${res.updated} updated`)
       setResult(null)

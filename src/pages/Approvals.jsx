@@ -37,8 +37,9 @@ export default function Approvals() {
   const decide = async (r, approve) => {
     setBusyId(r.id)
     try {
-      if (approve) await approveReport(orgId, orgName, r, profile?.name)
-      else await rejectReport(orgId, r, profile?.name)
+      const actor = { uid: profile?.uid, name: profile?.name }
+      if (approve) await approveReport(orgId, orgName, r, profile?.name, actor)
+      else await rejectReport(orgId, r, profile?.name, actor)
       toast.success(approve ? 'Approved & applied' : 'Rejected')
     } catch (e) {
       toast.error(e.message)

@@ -126,3 +126,12 @@ export function exportExtinguishers(list, filename = 'extinguishers.xlsx', today
 export function extinguishersToBase64(list, today = new Date()) {
   return XLSX.write(bookFromRows(rowsFor(list, today)), { type: 'base64', bookType: 'xlsx' })
 }
+
+/** Export audit-log rows to .xlsx. `rows` already shaped by the page (When/Actor/Action/…). */
+export function exportAuditLogs(rows, filename = 'audit-log.xlsx') {
+  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ When: '', Actor: '', Action: '', Target: '', Summary: '' }])
+  ws['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 28 }, { wch: 50 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Audit Log')
+  downloadWorkbook(wb, filename)
+}

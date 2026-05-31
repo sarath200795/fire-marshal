@@ -117,7 +117,7 @@ export default function Repository() {
     setDeleting(true)
     try {
       const items = selectedItems.map((e) => ({ id: e.id, qrToken: e.qrToken }))
-      await bulkDeleteExtinguishers(orgId, items)
+      await bulkDeleteExtinguishers(orgId, items, { uid: profile?.uid, name: profile?.name })
       toast.success(`Deleted ${items.length} extinguishers`)
       setSelected(new Set())
       setConfirmDelete(false)
@@ -275,6 +275,7 @@ export default function Repository() {
         ext={editFor}
         orgId={orgId}
         orgName={org?.name || orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
       />
 
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete extinguishers?">

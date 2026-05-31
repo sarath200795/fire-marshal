@@ -16,6 +16,7 @@ import {
   QrCode,
   ClipboardList,
   ListChecks,
+  ScrollText,
   LogOut,
   Menu,
   X,
@@ -109,6 +110,7 @@ export default function Layout() {
             Admin
           </p>
           <NavItem to="/app/users" icon={UsersIcon} label="Users" badge={pendingUsers.length} onClick={close} />
+          <NavItem to="/app/audit" icon={ScrollText} label="Audit Log" onClick={close} />
         </>
       )}
 

@@ -33,7 +33,7 @@ function Field({ label, children }) {
 }
 
 export default function AddExtinguisher() {
-  const { orgId, orgName } = useAuth()
+  const { orgId, orgName, profile } = useAuth()
   const { extinguishers } = useFleet()
   const [form, setForm] = useState(EMPTY)
   const [busy, setBusy] = useState(false)
@@ -49,7 +49,7 @@ export default function AddExtinguisher() {
       // Serial No is optional — auto-assign a unique FE-#### when left blank.
       const serialNo = form.serialNo.trim() || nextSerial(extinguishers.map((x) => x.serialNo))
       const payload = { ...form, serialNo }
-      const res = await addExtinguisher(orgId, orgName, payload)
+      const res = await addExtinguisher(orgId, orgName, payload, { uid: profile?.uid, name: profile?.name })
       setCreated({ ...res, serialNo })
       toast.success('Extinguisher added with QR code!')
     } catch (err) {

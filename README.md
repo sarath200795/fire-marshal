@@ -9,6 +9,18 @@ Built with **React (JSX) + Vite**, **Cloud Firestore + Firebase Auth**, **Tailwi
 
 ---
 
+## Quality & CI
+
+- **Tests:** `npm test` (Vitest) — unit tests for the pure logic libs
+  (`extinguisherLogic`, `serial`, `defectReports`, `audit`).
+- **CI:** `.github/workflows/ci.yml` runs tests + a production build on every push/PR to `main`.
+  Recommended: enable **branch protection** on `main` (GitHub → Settings → Branches) requiring the
+  `build-and-test` check to pass before merge.
+- **Audit log:** every data change is recorded in an append-only `auditLogs` subcollection and viewable
+  by admins at **/app/audit**. The Firestore rules make these entries immutable (no update/delete).
+
+---
+
 ## 1. Prerequisites
 
 - Node.js 18+

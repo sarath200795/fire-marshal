@@ -22,6 +22,7 @@ import {
 import { db } from '../firebase'
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS } from './constants'
+import { AUDIT, diffSummary } from './audit'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -31,6 +32,37 @@ const reportCol = (orgId) => collection(db, 'organizations', orgId, 'reports')
 const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
 const userRef = (uid) => doc(db, 'users', uid)
 const qrRef = (token) => doc(db, 'qr', token)
+const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
+
+// ── Audit log ──────────────────────────────────────────────────────────────────
+// Append-only trail. Never let an audit failure break the primary write.
+async function logAudit(orgId, actor, action, details = {}) {
+  if (!orgId) return
+  try {
+    await addDoc(auditCol(orgId), {
+      at: serverTimestamp(),
+      actorUid: actor?.uid || null,
+      actorName: actor?.name || 'Unknown',
+      action,
+      target: details.target || 'extinguisher',
+      targetId: details.targetId || null,
+      targetLabel: details.targetLabel || '',
+      summary: details.summary || '',
+      source: details.source || 'portal',
+    })
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[Fire Marshal] audit log failed:', e?.message || e)
+  }
+}
+
+export function subscribeAuditLogs(orgId, cb) {
+  const q = query(auditCol(orgId), orderBy('at', 'desc'), limit(200))
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+}
+
+const extLabelOf = (ext) =>
+  ext?.serialNo ? `${ext.serialNo} · ${ext.type || ''}`.trim() : `${ext?.type || ''} · ${ext?.capacity || ''}`
 
 // ── Organizations & users ─────────────────────────────────────────────────────
 
@@ -101,16 +133,32 @@ export function subscribeOrg(orgId, cb) {
 }
 
 /** Admin updates org-level settings. */
-export async function updateOrgSettings(orgId, updates) {
+export async function updateOrgSettings(orgId, updates, actor) {
   await updateDoc(orgRef(orgId), updates)
+  await logAudit(orgId, actor, AUDIT.ORG_SETTINGS, {
+    target: 'org',
+    summary: `Updated org settings: ${Object.keys(updates).join(', ')}`,
+  })
 }
 
-export async function setUserStatus(uid, status) {
+export async function setUserStatus(uid, status, orgId, actor, userLabel) {
   await updateDoc(userRef(uid), { status })
+  await logAudit(orgId, actor, AUDIT.USER_STATUS, {
+    target: 'user',
+    targetId: uid,
+    targetLabel: userLabel || uid,
+    summary: `Set status → ${status}`,
+  })
 }
 
-export async function setUserRole(uid, role) {
+export async function setUserRole(uid, role, orgId, actor, userLabel) {
   await updateDoc(userRef(uid), { role })
+  await logAudit(orgId, actor, AUDIT.USER_ROLE, {
+    target: 'user',
+    targetId: uid,
+    targetLabel: userLabel || uid,
+    summary: `Set role → ${role}`,
+  })
 }
 
 // ── QR mirror ──────────────────────────────────────────────────────────────────
@@ -139,7 +187,7 @@ function mirrorPayload(orgId, orgName, id, ext) {
 // ── Extinguishers ──────────────────────────────────────────────────────────────
 
 /** Add a single extinguisher + its public QR mirror. Returns {id, qrToken}. */
-export async function addExtinguisher(orgId, orgName, data) {
+export async function addExtinguisher(orgId, orgName, data, actor) {
   const ref = doc(extCol(orgId))
   const qrToken = generateQrToken()
   const ext = {
@@ -162,11 +210,16 @@ export async function addExtinguisher(orgId, orgName, data) {
   batch.set(ref, ext)
   batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, ref.id, ext))
   await batch.commit()
+  await logAudit(orgId, actor, AUDIT.EXT_CREATE, {
+    targetId: ref.id,
+    targetLabel: extLabelOf(ext),
+    summary: `${ext.type} ${ext.capacity} @ ${ext.centerName}`,
+  })
   return { id: ref.id, qrToken }
 }
 
 /** Bulk add many extinguishers in chunked batches. Returns count written. */
-export async function bulkAddExtinguishers(orgId, orgName, rows) {
+export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
   let written = 0
   // Firestore batches max 500 ops; each row = 2 writes, so chunk by 200 rows.
   for (let i = 0; i < rows.length; i += 200) {
@@ -197,6 +250,9 @@ export async function bulkAddExtinguishers(orgId, orgName, rows) {
     }
     await batch.commit()
   }
+  await logAudit(orgId, actor, AUDIT.EXT_BULK_CREATE, {
+    summary: `${written} extinguisher(s) added via bulk upload`,
+  })
   return written
 }
 
@@ -220,7 +276,7 @@ const UPSERT_FIELDS = [
  *    preserving status, physicalDefects and the existing qrToken; mirror rewritten.
  * Returns { created, updated } counts.
  */
-export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], updates = [] }) {
+export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], updates = [] }, actor) {
   let created = 0
   let updated = 0
 
@@ -280,32 +336,48 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
     await batch.commit()
   }
 
+  await logAudit(orgId, actor, AUDIT.EXT_BULK_UPSERT, {
+    summary: `Bulk import: ${created} added, ${updated} updated`,
+  })
   return { created, updated }
 }
 
-/** Update an extinguisher and keep its QR mirror in sync. */
-export async function updateExtinguisher(orgId, orgName, id, updates) {
+/**
+ * Update an extinguisher and keep its QR mirror in sync.
+ * `opts` = { actor, action, summary } drives the audit entry. Defaults to a
+ * field-level diff under the generic "edit" action.
+ */
+export async function updateExtinguisher(orgId, orgName, id, updates, opts = {}) {
   const current = await getDoc(extRef(orgId, id))
   if (!current.exists()) throw new Error('Extinguisher not found')
-  const merged = { ...current.data(), ...updates }
+  const before = current.data()
+  const merged = { ...before, ...updates }
   const batch = writeBatch(db)
   batch.update(extRef(orgId, id), { ...updates, updatedAt: serverTimestamp() })
   if (merged.qrToken) {
     batch.set(qrRef(merged.qrToken), mirrorPayload(orgId, orgName, id, merged))
   }
   await batch.commit()
+  if (!opts.silent) {
+    await logAudit(orgId, opts.actor, opts.action || AUDIT.EXT_UPDATE, {
+      targetId: id,
+      targetLabel: extLabelOf(merged),
+      summary: opts.summary || diffSummary(before, updates),
+    })
+  }
 }
 
 /** Delete one extinguisher + its mirror. */
-export async function deleteExtinguisher(orgId, id, qrToken) {
+export async function deleteExtinguisher(orgId, id, qrToken, actor, label) {
   const batch = writeBatch(db)
   batch.delete(extRef(orgId, id))
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
+  await logAudit(orgId, actor, AUDIT.EXT_DELETE, { targetId: id, targetLabel: label || '' })
 }
 
 /** Bulk delete extinguishers (+ mirrors) by [{id, qrToken}]. */
-export async function bulkDeleteExtinguishers(orgId, items) {
+export async function bulkDeleteExtinguishers(orgId, items, actor) {
   for (let i = 0; i < items.length; i += 200) {
     const chunk = items.slice(i, i + 200)
     const batch = writeBatch(db)
@@ -315,6 +387,9 @@ export async function bulkDeleteExtinguishers(orgId, items) {
     }
     await batch.commit()
   }
+  await logAudit(orgId, actor, AUDIT.EXT_BULK_DELETE, {
+    summary: `${items.length} extinguisher(s) deleted`,
+  })
 }
 
 export function subscribeExtinguishers(orgId, cb) {
@@ -355,6 +430,13 @@ export async function createReport(orgId, report) {
     approvalStatus: 'pending',
     reportedAt: serverTimestamp(),
   })
+  const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
+  await logAudit(orgId, { uid: report.reportedBy, name: report.reportedByName }, AUDIT.REPORT_CREATE, {
+    target: 'report',
+    targetLabel: report.extLabel || report.extId,
+    summary: `Reported ${what}${report.reporterRole ? ` (by ${report.reporterRole})` : ''}`,
+    source: report.source || 'portal',
+  })
 }
 
 export function subscribeReports(orgId, cb) {
@@ -368,7 +450,7 @@ export function subscribeReports(orgId, cb) {
  *  - physical defect              → add defect (status unchanged)
  *  - status_change                → set the requested status
  */
-export async function approveReport(orgId, orgName, report, reviewerName) {
+export async function approveReport(orgId, orgName, report, reviewerName, actor) {
   const ext = await getExtinguisher(orgId, report.extId)
   if (!ext) throw new Error('Extinguisher no longer exists')
 
@@ -384,19 +466,35 @@ export async function approveReport(orgId, orgName, report, reviewerName) {
     updates.status = report.newStatus
   }
 
-  await updateExtinguisher(orgId, orgName, report.extId, updates)
+  const reviewer = actor || { name: reviewerName }
+  // Apply silently (no generic edit audit); we log the approve below.
+  await updateExtinguisher(orgId, orgName, report.extId, updates, { silent: true })
   await updateDoc(reportRef(orgId, report.id), {
     approvalStatus: 'approved',
     reviewedBy: reviewerName || '',
     reviewedAt: serverTimestamp(),
   })
+  const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
+  await logAudit(orgId, reviewer, AUDIT.REPORT_APPROVE, {
+    target: 'report',
+    targetId: report.extId,
+    targetLabel: report.extLabel || report.extId,
+    summary: `Approved ${what}`,
+  })
 }
 
-export async function rejectReport(orgId, report, reviewerName) {
+export async function rejectReport(orgId, report, reviewerName, actor) {
   await updateDoc(reportRef(orgId, report.id), {
     approvalStatus: 'rejected',
     reviewedBy: reviewerName || '',
     reviewedAt: serverTimestamp(),
+  })
+  const what = report.kind === 'defect' ? `defect (${report.defectType})` : `status → ${report.newStatus}`
+  await logAudit(orgId, actor || { name: reviewerName }, AUDIT.REPORT_REJECT, {
+    target: 'report',
+    targetId: report.extId,
+    targetLabel: report.extLabel || report.extId,
+    summary: `Rejected ${what}`,
   })
 }
 
@@ -412,7 +510,7 @@ export async function markReceivedByVendor(orgId, orgName, id, actorName) {
   await updateExtinguisher(orgId, orgName, id, {
     status: STATUS.IN_PROCESS_REFILLING,
     ...actionStamp(actorName, 'Sent to vendor'),
-  })
+  }, { actor: { name: actorName }, action: AUDIT.WF_SENT_TO_VENDOR, summary: 'Marked received by vendor (In Process)' })
 }
 
 /** Extinguisher refilled & returned: close it, set new due dates, clear defects. */
@@ -424,7 +522,7 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
     physicalDefects: [],
     lastRefilledAt: new Date().toISOString().slice(0, 10),
     ...actionStamp(actorName, 'Refilled & Closed'),
-  })
+  }, { actor: { name: actorName }, action: AUDIT.WF_REFILLED_CLOSED, summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})` })
 }
 
 /** Resolve (clear) physical defects without a refill. */
@@ -432,5 +530,5 @@ export async function resolveDefects(orgId, orgName, id, remainingDefects = [], 
   await updateExtinguisher(orgId, orgName, id, {
     physicalDefects: remainingDefects,
     ...actionStamp(actorName, 'Resolved defects'),
-  })
+  }, { actor: { name: actorName }, action: AUDIT.WF_RESOLVED_DEFECTS, summary: 'Physical defects resolved' })
 }

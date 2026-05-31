@@ -40,6 +40,14 @@ service cloud.firestore {
         // Approve / reject is an org member action.
         allow update, delete: if isApprovedMemberOf(orgId);
       }
+
+      // ── Audit log ── append-only, immutable. Org members read + append; no
+      // edits or deletes (even by admins) so the trail can't be tampered with.
+      match /auditLogs/{logId} {
+        allow read: if isApprovedMemberOf(orgId);
+        allow create: if isApprovedMemberOf(orgId);
+        allow update, delete: if false;
+      }
     }
 
     // ── Users ──

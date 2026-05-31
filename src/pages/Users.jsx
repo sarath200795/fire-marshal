@@ -14,7 +14,8 @@ const STATUS_META = {
 
 export default function Users() {
   const { users } = useFleet()
-  const { user: me } = useAuth()
+  const { user: me, orgId, profile } = useAuth()
+  const actor = { uid: profile?.uid, name: profile?.name }
 
   const pending = users.filter((u) => u.status === 'pending')
   const others = users.filter((u) => u.status !== 'pending')
@@ -62,13 +63,13 @@ export default function Users() {
               <div className="flex gap-2">
                 <button
                   className="btn bg-green-600 px-3 text-white hover:bg-green-700"
-                  onClick={() => act(() => setUserStatus(u.uid, 'approved'), `${u.name} approved`)}
+                  onClick={() => act(() => setUserStatus(u.uid, 'approved', orgId, actor, u.name), `${u.name} approved`)}
                 >
                   <Check size={16} />
                 </button>
                 <button
                   className="btn-ghost px-3"
-                  onClick={() => act(() => setUserStatus(u.uid, 'rejected'), `${u.name} rejected`)}
+                  onClick={() => act(() => setUserStatus(u.uid, 'rejected', orgId, actor, u.name), `${u.name} rejected`)}
                 >
                   <X size={16} />
                 </button>
@@ -118,7 +119,7 @@ export default function Users() {
                           className="btn-ghost px-2.5 py-1.5 text-xs"
                           onClick={() =>
                             act(
-                              () => setUserRole(u.uid, u.role === 'admin' ? 'member' : 'admin'),
+                              () => setUserRole(u.uid, u.role === 'admin' ? 'member' : 'admin', orgId, actor, u.name),
                               `${u.name} is now ${u.role === 'admin' ? 'a member' : 'an admin'}`
                             )
                           }
@@ -128,14 +129,14 @@ export default function Users() {
                         {u.status === 'approved' ? (
                           <button
                             className="btn-ghost px-2.5 py-1.5 text-xs"
-                            onClick={() => act(() => setUserStatus(u.uid, 'rejected'), `${u.name} revoked`)}
+                            onClick={() => act(() => setUserStatus(u.uid, 'rejected', orgId, actor, u.name), `${u.name} revoked`)}
                           >
                             Revoke
                           </button>
                         ) : (
                           <button
                             className="btn-soft px-2.5 py-1.5 text-xs"
-                            onClick={() => act(() => setUserStatus(u.uid, 'approved'), `${u.name} approved`)}
+                            onClick={() => act(() => setUserStatus(u.uid, 'approved', orgId, actor, u.name), `${u.name} approved`)}
                           >
                             Approve
                           </button>
