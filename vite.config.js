@@ -14,15 +14,20 @@ export default defineConfig({
     // chunk like xlsx or recharts is only fetched when its page is opened.
     rollupOptions: {
       output: {
+        // Only split out heavy, SELF-CONTAINED libraries that don't share a
+        // dependency graph with React. Splitting React-coupled libs (recharts,
+        // react-router, react-is, scheduler…) across chunks creates cross-chunk
+        // circular imports → TDZ crashes ("Cannot access 'X' before
+        // initialization" / "reading 'memo'"). Route-level React.lazy already
+        // code-splits the app pages, so everything else stays in one vendor
+        // chunk where evaluation order is correct.
         manualChunks(id) {
           if (!id.includes('node_modules')) return
-          if (id.includes('xlsx')) return 'xlsx'
-          if (id.includes('recharts') || id.includes('d3-') || id.includes('victory-vendor')) return 'charts'
-          if (id.includes('/firebase/') || id.includes('@firebase')) return 'firebase'
-          if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) return 'motion'
-          if (id.includes('qrcode')) return 'qrcode'
-          if (id.includes('react-router') || id.includes('react-dom') || id.includes('/react/')) return 'react'
-          return 'vendor'
+          const m = id.split('node_modules/')[1] || ''
+          const pkg = m.startsWith('@') ? m.split('/').slice(0, 2).join('/') : m.split('/')[0]
+          if (pkg === 'xlsx') return 'xlsx'
+          if (pkg === 'firebase' || pkg.startsWith('@firebase')) return 'firebase'
+          return undefined
         },
       },
     },
