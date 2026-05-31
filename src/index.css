@@ -80,5 +80,27 @@ body {
 
 @media print {
   .no-print { display: none !important; }
-  body { background: #fff; }
+  body {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* QR print sheet: fixed 3-up grid, each label kept whole across pages. */
+  .qr-print-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8mm !important;
+  }
+  .qr-print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    min-height: 46mm;
+    box-shadow: none !important;
+  }
 }

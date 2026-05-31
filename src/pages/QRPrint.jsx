@@ -38,6 +38,15 @@ export default function QRPrint() {
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
     documentTitle: 'Fire-Marshal-QR-Codes',
+    // Duplicate the @page + grid rules so they also apply inside the print iframe.
+    pageStyle: `
+      @page { size: A4; margin: 12mm; }
+      @media print {
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .qr-print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8mm !important; }
+        .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; }
+      }
+    `,
   })
 
   return (
@@ -87,9 +96,9 @@ export default function QRPrint() {
             {items.length === 0 ? (
               <EmptyState icon={Printer} title="Nothing selected" hint="Pick extinguishers on the left to print their QR codes." />
             ) : (
-              <div ref={printRef} className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div ref={printRef} className="qr-print-grid grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {items.map((e) => (
-                  <div key={e.id} className="flex flex-col items-center rounded-2xl border border-ink-200 bg-white p-4 text-center">
+                  <div key={e.id} className="qr-print-card flex flex-col items-center rounded-2xl border border-ink-200 bg-white p-4 text-center">
                     <div className="mb-1 text-xs font-extrabold uppercase tracking-wide text-brand-600">🔥 Fire Marshal</div>
                     <QRCodeCanvas value={publicQrUrl(e.qrToken)} size={132} level="M" includeMargin />
                     <p className="mt-2 text-sm font-extrabold text-ink-900">{e.serialNo || '—'}</p>
