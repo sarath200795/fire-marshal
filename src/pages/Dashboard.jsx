@@ -12,7 +12,7 @@ import { PageHeader } from '../components/ui'
 import CountUp from '../components/CountUp'
 import { useFleet } from '../context/FleetContext'
 import {
-  fleetSummary, isToBeRefilled, isInProcess, isPhysicalDefect, isClosed, deriveStatus,
+  fleetSummary, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed, deriveStatus,
 } from '../lib/extinguisherLogic'
 import {
   TYPES, CAPACITIES, ENTITIES, REGIONS, TYPE_COLORS, ENTITY_COLORS, REGION_COLORS,
@@ -113,7 +113,7 @@ export default function Dashboard() {
   const refillDue = useMemo(() => filtered.filter((e) => isToBeRefilled(e, today)), [filtered, today])
   const inProcess = useMemo(() => filtered.filter((e) => isInProcess(e)), [filtered])
   const physicalDefects = useMemo(() => filtered.filter((e) => isPhysicalDefect(e)), [filtered])
-  const closed = useMemo(() => filtered.filter((e) => isClosed(e)), [filtered])
+  const closed = useMemo(() => filtered.filter((e) => isRefilledClosed(e)), [filtered])
 
   const typeData = useMemo(
     () => TYPES.map((t) => ({ name: t, value: filtered.filter((e) => e.type === t).length, color: TYPE_COLORS[t] })).filter((d) => d.value > 0),
@@ -147,7 +147,7 @@ export default function Dashboard() {
     { label: 'To Be Refilled', value: refillDue.length, color: '#f59e0b', icon: RefreshCw, to: '/app/refill-due' },
     { label: 'In Process', value: inProcess.length, color: '#6366f1', icon: Truck, onClick: () => setSingle('status', STATUS.IN_PROCESS_REFILLING) },
     { label: 'Physical Defects', value: physicalDefects.length, color: '#d97706', icon: Wrench, to: '/app/physical-open' },
-    { label: 'Refilled & Closed', value: closed.length, color: '#0ea5e9', icon: CheckCircle2, onClick: () => setSingle('status', STATUS.CLOSED) },
+    { label: 'Refilled & Closed', value: closed.length, color: '#0ea5e9', icon: CheckCircle2, to: '/app/closed' },
   ]
 
   return (

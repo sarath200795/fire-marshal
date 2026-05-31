@@ -107,6 +107,17 @@ export function isClosed(ext) {
   return ext.status === STATUS.CLOSED
 }
 
+/**
+ * "Refilled & Closed" = a completed refill cycle. We log this via the
+ * `lastRefilledAt` stamp written by markRefilledAndClosed, rather than the
+ * CLOSED status — because a refilled unit is reactivated (new due dates) and
+ * must keep being tracked, yet should still appear in the Refilled & Closed
+ * record. Also include any explicitly CLOSED units for completeness.
+ */
+export function isRefilledClosed(ext) {
+  return Boolean(ext.lastRefilledAt) || ext.status === STATUS.CLOSED
+}
+
 export function isHealthy(ext, today = new Date()) {
   return deriveStatus(ext, today).isHealthy
 }
@@ -153,7 +164,7 @@ export function fleetSummary(list, today = new Date()) {
     if (isToBeRefilled(ext, today)) summary.toBeRefilled++
     if (d.inProcess) summary.inProcess++
     if (d.hasPhysicalDefect && !d.isClosed) summary.physicalDefects++
-    if (d.isClosed) summary.closed++
+    if (isRefilledClosed(ext)) summary.closed++
     for (const c of d.categories) {
       summary.categoryCounts[c] = (summary.categoryCounts[c] || 0) + 1
     }

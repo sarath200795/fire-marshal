@@ -11,7 +11,7 @@ import {
   isToBeRefilled,
   isInProcess,
   isPhysicalDefect,
-  isClosed,
+  isRefilledClosed,
 } from '../lib/extinguisherLogic'
 import { derivePhysicalDefectLog } from '../lib/defectReports'
 
@@ -71,7 +71,7 @@ export function FleetProvider({ children }) {
       refillDue: extinguishers.filter((e) => isToBeRefilled(e, today)),
       inProcess: extinguishers.filter((e) => isInProcess(e)),
       physicalDefects: extinguishers.filter((e) => isPhysicalDefect(e)),
-      closed: extinguishers.filter((e) => isClosed(e)),
+      closed: extinguishers.filter((e) => isRefilledClosed(e)),
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
