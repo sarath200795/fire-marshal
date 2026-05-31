@@ -24,7 +24,7 @@ function reportMeta(r) {
     icon: Truck,
     title: STATUS_LABEL[r.newStatus] || 'Status change',
     color: STATUS_COLOR[r.newStatus] || '#6366f1',
-    detail: `Requested status change`,
+    detail: `Will move to ${STATUS_LABEL[r.newStatus] || r.newStatus}`,
   }
 }
 

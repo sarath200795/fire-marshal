@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
-import { Flame, AlertTriangle, Truck, ShieldCheck, MapPin, Calendar, Loader2 } from 'lucide-react'
+import { Flame, AlertTriangle, Truck, RefreshCw, ShieldCheck, MapPin, Calendar, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge, Spinner } from '../components/ui'
 import ReportDefectModal from '../components/ReportDefectModal'
@@ -28,7 +28,7 @@ export default function PublicQR() {
   const [ext, setExt] = useState(null)
   const [loading, setLoading] = useState(true)
   const [reportOpen, setReportOpen] = useState(false)
-  const [requesting, setRequesting] = useState(false)
+  const [busyAction, setBusyAction] = useState(null) // 'refill' | 'pickup' | null
 
   const load = async () => {
     setLoading(true)
@@ -44,15 +44,18 @@ export default function PublicQR() {
     return d ? format(d, 'dd MMM yyyy') : '—'
   }
 
-  const requestInProcess = async () => {
-    setRequesting(true)
+  const extLabel = () => (ext.serialNo ? `${ext.serialNo} · ${ext.type}` : `${ext.type} · ${ext.capacity}`)
+
+  // Step 1: request a refill → on approval lands in "To Be Refilled".
+  const requestRefill = async () => {
+    setBusyAction('refill')
     try {
       await createReport(ext.orgId, {
         extId: ext.extId,
-        extLabel: ext.serialNo ? `${ext.serialNo} · ${ext.type}` : `${ext.type} · ${ext.capacity}`,
+        extLabel: extLabel(),
         kind: 'status_change',
-        newStatus: STATUS.IN_PROCESS_REFILLING,
-        note: 'Requested via public QR scan',
+        newStatus: STATUS.TO_BE_REFILLED,
+        note: 'Refill requested via QR scan',
         reportedBy: 'public',
         reportedByName: 'QR Scan (Public)',
         source: 'qr',
@@ -61,7 +64,29 @@ export default function PublicQR() {
     } catch (e) {
       toast.error(e.message)
     } finally {
-      setRequesting(false)
+      setBusyAction(null)
+    }
+  }
+
+  // Step 2: vendor picked it up → on approval lands in "In Process of Refilling".
+  const pickedUpByVendor = async () => {
+    setBusyAction('pickup')
+    try {
+      await createReport(ext.orgId, {
+        extId: ext.extId,
+        extLabel: extLabel(),
+        kind: 'status_change',
+        newStatus: STATUS.IN_PROCESS_REFILLING,
+        note: 'Picked up by vendor for refill (via QR scan)',
+        reportedBy: 'public',
+        reportedByName: 'QR Scan (Public)',
+        source: 'qr',
+      })
+      toast.success('Vendor pickup submitted — pending approval')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusyAction(null)
     }
   }
 
@@ -134,8 +159,11 @@ export default function PublicQR() {
             <button className="btn-primary w-full" onClick={() => setReportOpen(true)}>
               <AlertTriangle size={16} /> Report a defect
             </button>
-            <button className="btn w-full bg-white/10 text-white hover:bg-white/20" onClick={requestInProcess} disabled={requesting}>
-              {requesting ? <Spinner size={18} /> : (<><Truck size={16} /> Request refill (In Process)</>)}
+            <button className="btn w-full bg-white/10 text-white hover:bg-white/20" onClick={requestRefill} disabled={busyAction !== null}>
+              {busyAction === 'refill' ? <Spinner size={18} /> : (<><RefreshCw size={16} /> Request refill</>)}
+            </button>
+            <button className="btn w-full bg-white/10 text-white hover:bg-white/20" onClick={pickedUpByVendor} disabled={busyAction !== null}>
+              {busyAction === 'pickup' ? <Spinner size={18} /> : (<><Truck size={16} /> Picked up by vendor for refill</>)}
             </button>
           </div>
           <p className="mt-3 text-center text-xs text-white/40">
