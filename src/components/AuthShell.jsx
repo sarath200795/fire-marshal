@@ -79,7 +79,7 @@ export default function AuthShell({ children }) {
       </div>
 
       {/* Right — form */}
-      <div className="flex items-center justify-center bg-ink-50 px-6 py-12">
+      <div className="flex items-center justify-center bg-clay-bg px-6 py-12">
         <motion.div
           className="w-full max-w-md"
           initial={{ opacity: 0, y: 16 }}

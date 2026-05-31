@@ -82,7 +82,7 @@ export default function Legal({ kind = 'privacy' }) {
           </Link>
         </div>
 
-        <div className="rounded-3xl bg-white p-6 text-ink-800 shadow-card sm:p-9">
+        <div className="rounded-3xl bg-clay-surface p-6 text-ink-800 shadow-clay sm:p-9">
           <div className="mb-1 flex items-center gap-2 text-brand-600">
             <ShieldCheck size={18} />
             <span className="text-xs font-bold uppercase tracking-widest">Legal</span>

@@ -253,7 +253,7 @@ export default function Dashboard() {
         <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wide text-ink-400">Active:</span>
           {search && (
-            <button className="chip bg-ink-100 text-ink-600" onClick={() => setSearch('')}>
+            <button className="chip bg-clay-100 text-ink-600" onClick={() => setSearch('')}>
               “{search}” <X size={12} />
             </button>
           )}
@@ -302,7 +302,7 @@ export default function Dashboard() {
           <div className="relative h-56">
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart innerRadius="70%" outerRadius="100%" data={healthRadial} startAngle={90} endAngle={-270}>
-                <RadialBar background={{ fill: '#eceef2' }} dataKey="value" cornerRadius={20} />
+                <RadialBar background={{ fill: '#efe0d7' }} dataKey="value" cornerRadius={20} />
               </RadialBarChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
@@ -350,7 +350,7 @@ export default function Dashboard() {
             <BarChart data={entityData}>
               <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} />
-              <Tooltip cursor={{ fill: '#f6f7f9' }} />
+              <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
               <Bar dataKey="value" radius={[8, 8, 0, 0]} onClick={(d) => toggle('entity', d.name)} className="cursor-pointer">
                 {entityData.map((d) => <Cell key={d.name} fill={d.color} fillOpacity={segOpacity(filters.entity, d.name)} />)}
                 <LabelList dataKey="value" position="top" fontSize={12} />
@@ -381,7 +381,7 @@ export default function Dashboard() {
               <BarChart data={categoryData} layout="vertical" margin={{ left: 8, right: 28 }}>
                 <XAxis type="number" allowDecimals={false} hide />
                 <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} fontSize={11} />
-                <Tooltip cursor={{ fill: '#f6f7f9' }} />
+                <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
                 <Bar dataKey="value" radius={[0, 8, 8, 0]} onClick={(d) => toggle('category', d.key)} className="cursor-pointer">
                   {categoryData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.category, d.key)} />)}
                   <LabelList dataKey="value" position="right" fontSize={12} />

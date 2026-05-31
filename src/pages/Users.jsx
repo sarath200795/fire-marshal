@@ -85,7 +85,7 @@ export default function Users() {
       </h2>
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-ink-50 text-left text-xs uppercase tracking-wide text-ink-500">
+          <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Email</th>
@@ -94,12 +94,12 @@ export default function Users() {
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ink-100">
+          <tbody className="divide-y divide-clay-200/60">
             {others.map((u) => {
               const meta = STATUS_META[u.status] || STATUS_META.pending
               const isMe = u.uid === me?.uid
               return (
-                <tr key={u.uid} className="hover:bg-ink-50/60">
+                <tr key={u.uid} className="hover:bg-clay-100/50">
                   <td className="px-4 py-3 font-semibold text-ink-900">
                     {u.name} {isMe && <span className="text-xs font-normal text-ink-400">(you)</span>}
                   </td>

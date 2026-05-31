@@ -113,7 +113,7 @@ export default function AuditLog() {
                   <th className="px-4 py-3">Summary</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ink-100">
+              <tbody className="divide-y divide-clay-200/60">
                 {filtered.map((l, i) => {
                   const m = auditMeta(l.action)
                   return (
@@ -122,7 +122,7 @@ export default function AuditLog() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: Math.min(i * 0.015, 0.3) }}
-                      className="hover:bg-ink-50/70"
+                      className="hover:bg-clay-100/50"
                       style={{ boxShadow: `inset 4px 0 0 ${m.color}` }}
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-ink-600">{fmt(l.at)}</td>

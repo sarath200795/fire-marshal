@@ -63,7 +63,7 @@ export default function EditExtinguisherModal({ open, onClose, ext, orgId, orgNa
         <label className="label">Serial No (read-only)</label>
         <div className="relative">
           <Hash size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-          <input className="input pl-9 bg-ink-50 text-ink-500" value={ext.serialNo || '—'} readOnly disabled />
+          <input className="input pl-9 text-ink-500" value={ext.serialNo || '—'} readOnly disabled />
         </div>
       </div>
 

@@ -135,7 +135,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
                   <th className="px-4 py-3 text-right">QR</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ink-100">
+              <tbody className="divide-y divide-clay-200/60">
                 {filtered.map((r, i) => {
                   const color = DEFECT_BY_KEY[r.defectType]?.color || '#64748b'
                   return (
@@ -144,7 +144,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: Math.min(i * 0.02, 0.4) }}
-                      className="hover:bg-ink-50/70"
+                      className="hover:bg-clay-100/50"
                       style={{ boxShadow: `inset 4px 0 0 ${color}` }}
                     >
                       <td className="px-4 py-3">

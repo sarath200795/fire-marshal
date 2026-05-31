@@ -144,9 +144,9 @@ export default function Layout() {
   )
 
   return (
-    <div className="min-h-screen bg-ink-50">
+    <div className="min-h-screen bg-clay-bg">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-ink-950 lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-ink-950 shadow-clay lg:block">
         {SidebarContent}
       </aside>
 
@@ -177,8 +177,8 @@ export default function Layout() {
       {/* Main column */}
       <div className="lg:pl-64">
         {/* Mobile top bar */}
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-ink-100 bg-white/80 px-4 py-3 backdrop-blur lg:hidden">
-          <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 hover:bg-ink-100">
+        <header className="sticky top-0 z-20 flex items-center gap-3 bg-clay-bg/80 px-4 py-3 backdrop-blur lg:hidden">
+          <button onClick={() => setMobileOpen(true)} className="rounded-xl p-2 shadow-clay-sm transition hover:bg-clay-100 active:shadow-clay-pressed">
             <Menu size={20} />
           </button>
           <span className="flex items-center gap-2 font-extrabold">

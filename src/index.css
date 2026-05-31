@@ -11,7 +11,7 @@
 }
 
 body {
-  @apply bg-ink-50 text-ink-900 font-sans antialiased;
+  @apply bg-clay-bg text-ink-900 font-sans antialiased;
   margin: 0;
 }
 
@@ -44,37 +44,51 @@ body {
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd2dd; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: #aeb7c7; background-clip: content-box; }
+::-webkit-scrollbar-thumb { background: #e0c9bc; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #d3b3a3; background-clip: content-box; }
 
 /* Reusable component classes */
 @layer components {
+  /* ── Claymorphism core surfaces (warm coral-clay) ────────────────────────
+     Raised = light top-left highlight + warm dark bottom-right drop. Inputs
+     are recessed (inset). Pressable controls sink on :active. Coral = accent. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97];
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 shadow-clay-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none active:scale-[0.98] active:shadow-clay-pressed;
   }
   .btn-primary {
-    @apply btn bg-brand-500 text-white hover:bg-brand-600 shadow-lg shadow-brand-500/30 hover:shadow-brand-500/40;
+    @apply btn bg-brand-500 text-white hover:bg-brand-600 shadow-clay-brand;
   }
   .btn-ghost {
-    @apply btn bg-white text-ink-700 ring-1 ring-ink-200 hover:bg-ink-50;
+    @apply btn bg-clay-surface text-ink-700 hover:bg-clay-100;
   }
   .btn-soft {
     @apply btn bg-brand-50 text-brand-700 hover:bg-brand-100;
   }
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-500/30;
+    @apply btn bg-red-600 text-white hover:bg-red-700 shadow-[5px_5px_12px_rgba(220,38,38,0.28),-5px_-5px_12px_rgba(255,255,255,0.75)];
   }
   .input {
-    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100;
+    @apply w-full rounded-2xl border border-transparent bg-clay-surface px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 outline-none shadow-clay-inset transition focus:border-brand-300 focus:ring-2 focus:ring-brand-200;
   }
   .label {
     @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500;
   }
   .card {
-    @apply rounded-2xl bg-white shadow-card ring-1 ring-ink-100;
+    @apply rounded-3xl bg-clay-surface shadow-clay;
   }
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shadow-clay-sm;
+  }
+
+  /* Clay helper utilities for surfaces that don't use .card/.btn */
+  .clay {
+    @apply rounded-3xl bg-clay-surface shadow-clay;
+  }
+  .clay-inset {
+    @apply rounded-2xl bg-clay-surface shadow-clay-inset;
+  }
+  .clay-pressed {
+    @apply rounded-2xl bg-clay-surface shadow-clay-pressed;
   }
 }
 

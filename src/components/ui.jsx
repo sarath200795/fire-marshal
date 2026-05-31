@@ -16,7 +16,7 @@ export function Spinner({ size = 24, className = '' }) {
 
 export function FullScreenLoader({ label = 'Loading…' }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-ink-50 text-ink-500">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-clay-bg text-ink-500">
       <ExtinguishAnimation size={170} />
       <motion.p
         className="text-sm font-medium"
@@ -52,10 +52,10 @@ export function EmptyState({ icon: Icon, title, hint, action }) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-ink-200 bg-white/60 px-6 py-16 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-3xl bg-clay-surface/60 px-6 py-16 text-center shadow-clay-inset"
     >
       {Icon && (
-        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-ink-100 text-ink-400">
+        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-surface text-ink-400 shadow-clay-inset">
           <Icon size={26} />
         </div>
       )}
@@ -85,7 +85,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' })
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          <div className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-sm" onClick={onClose} />
           <motion.div
             className={`card relative z-10 w-full ${maxWidth} overflow-hidden`}
             initial={{ scale: 0.94, opacity: 0, y: 16 }}
@@ -93,9 +93,9 @@ export function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' })
             exit={{ scale: 0.96, opacity: 0, y: 8 }}
             transition={{ type: 'spring', stiffness: 300, damping: 26 }}
           >
-            <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4">
+            <div className="flex items-center justify-between border-b border-clay-200/60 px-5 py-4">
               <h3 className="text-base font-bold text-ink-900">{title}</h3>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700">
+              <button onClick={onClose} className="rounded-xl p-1.5 text-ink-400 shadow-clay-sm transition hover:bg-clay-100 active:shadow-clay-pressed hover:text-ink-700">
                 <X size={18} />
               </button>
             </div>
