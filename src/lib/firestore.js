@@ -35,6 +35,7 @@ const reportRef = (orgId, id) => doc(db, 'organizations', orgId, 'reports', id)
 const userRef = (uid) => doc(db, 'users', uid)
 const qrRef = (token) => doc(db, 'qr', token)
 const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
+const statsRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'stats')
 // Public, minimal name→org index so signup can look up an org by name WITHOUT
 // reading the (member-only) organizations collection.
 const orgIndexKey = (name) => (name || '').trim().toLowerCase()
