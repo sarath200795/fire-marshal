@@ -371,22 +371,31 @@ export async function updateExtinguisher(orgId, orgName, id, updates, opts = {})
   }
 }
 
-/** Delete one extinguisher + its mirror. */
+/**
+ * Soft-delete one extinguisher: mark deletedAt/deletedBy (recoverable from the
+ * Recycle Bin) and remove the public QR mirror so scans stop resolving.
+ */
 export async function deleteExtinguisher(orgId, id, qrToken, actor, label) {
   const batch = writeBatch(db)
-  batch.delete(extRef(orgId, id))
+  batch.update(extRef(orgId, id), {
+    deletedAt: serverTimestamp(),
+    deletedBy: actor?.name || '',
+  })
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
   await logAudit(orgId, actor, AUDIT.EXT_DELETE, { targetId: id, targetLabel: label || '' })
 }
 
-/** Bulk delete extinguishers (+ mirrors) by [{id, qrToken}]. */
+/** Bulk soft-delete extinguishers (+ remove mirrors) by [{id, qrToken}]. */
 export async function bulkDeleteExtinguishers(orgId, items, actor) {
   for (let i = 0; i < items.length; i += 200) {
     const chunk = items.slice(i, i + 200)
     const batch = writeBatch(db)
     for (const { id, qrToken } of chunk) {
-      batch.delete(extRef(orgId, id))
+      batch.update(extRef(orgId, id), {
+        deletedAt: serverTimestamp(),
+        deletedBy: actor?.name || '',
+      })
       if (qrToken) batch.delete(qrRef(qrToken))
     }
     await batch.commit()
@@ -396,8 +405,36 @@ export async function bulkDeleteExtinguishers(orgId, items, actor) {
   })
 }
 
-export function subscribeExtinguishers(orgId, cb) {
-  const q = query(extCol(orgId), orderBy('createdAt', 'desc'))
+/** Restore a soft-deleted extinguisher: clear deletedAt + rebuild the QR mirror. */
+export async function restoreExtinguisher(orgId, orgName, id, actor) {
+  const snap = await getDoc(extRef(orgId, id))
+  if (!snap.exists()) throw new Error('Extinguisher not found')
+  const data = snap.data()
+  const batch = writeBatch(db)
+  batch.update(extRef(orgId, id), { deletedAt: null, deletedBy: null, updatedAt: serverTimestamp() })
+  if (data.qrToken) {
+    batch.set(qrRef(data.qrToken), mirrorPayload(orgId, orgName, id, { ...data, deletedAt: null }))
+  }
+  await batch.commit()
+  await logAudit(orgId, actor, AUDIT.EXT_RESTORE, { targetId: id, targetLabel: extLabelOf(data) })
+}
+
+/** Permanently delete a soft-deleted extinguisher (admin only — enforced by rules). */
+export async function purgeExtinguisher(orgId, id, qrToken, actor, label) {
+  const batch = writeBatch(db)
+  batch.delete(extRef(orgId, id))
+  if (qrToken) batch.delete(qrRef(qrToken))
+  await batch.commit()
+  await logAudit(orgId, actor, AUDIT.EXT_PURGE, { targetId: id, targetLabel: label || '' })
+}
+
+// Max extinguishers loaded into the live in-memory set. The dashboard + all
+// lists derive from this set client-side, so we cap it for scale; a banner warns
+// when the cap is hit. (Full server-side pagination is a future enhancement.)
+export const EXT_LOAD_CAP = 2000
+
+export function subscribeExtinguishers(orgId, cb, max = EXT_LOAD_CAP) {
+  const q = query(extCol(orgId), orderBy('createdAt', 'desc'), limit(max))
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 

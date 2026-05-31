@@ -127,6 +127,19 @@ export function extinguishersToBase64(list, today = new Date()) {
   return XLSX.write(bookFromRows(rowsFor(list, today)), { type: 'base64', bookType: 'xlsx' })
 }
 
+/** Download an arbitrary object as a pretty-printed .json file (full backup snapshot). */
+export function downloadJsonBackup(data, filename = 'backup.json') {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /** Export audit-log rows to .xlsx. `rows` already shaped by the page (When/Actor/Action/…). */
 export function exportAuditLogs(rows, filename = 'audit-log.xlsx') {
   const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ When: '', Actor: '', Action: '', Target: '', Summary: '' }])

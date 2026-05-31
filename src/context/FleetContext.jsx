@@ -12,8 +12,10 @@ import {
   isInProcess,
   isPhysicalDefect,
   isRefilledClosed,
+  isDeleted,
 } from '../lib/extinguisherLogic'
 import { derivePhysicalDefectLog } from '../lib/defectReports'
+import { EXT_LOAD_CAP } from '../lib/firestore'
 
 const FleetContext = createContext(null)
 
@@ -57,21 +59,28 @@ export function FleetProvider({ children }) {
 
   const value = useMemo(() => {
     const today = new Date()
-    const summary = fleetSummary(extinguishers, today)
-    const defectLog = derivePhysicalDefectLog(reports, extinguishers)
+    // Soft-deleted units live in the Recycle Bin only — exclude everywhere else.
+    const active = extinguishers.filter((e) => !isDeleted(e))
+    const deletedExtinguishers = extinguishers.filter((e) => isDeleted(e))
+    const summary = fleetSummary(active, today)
+    const defectLog = derivePhysicalDefectLog(reports, active)
     return {
       loading,
       org,
-      extinguishers,
+      extinguishers: active,
+      deletedExtinguishers,
+      // True when the live load hit the cap (full set may be larger).
+      capped: extinguishers.length >= EXT_LOAD_CAP,
+      loadCap: EXT_LOAD_CAP,
       reports,
       users,
       summary,
       pendingReports: reports.filter((r) => r.approvalStatus === 'pending'),
       pendingUsers: users.filter((u) => u.status === 'pending'),
-      refillDue: extinguishers.filter((e) => isToBeRefilled(e, today)),
-      inProcess: extinguishers.filter((e) => isInProcess(e)),
-      physicalDefects: extinguishers.filter((e) => isPhysicalDefect(e)),
-      closed: extinguishers.filter((e) => isRefilledClosed(e)),
+      refillDue: active.filter((e) => isToBeRefilled(e, today)),
+      inProcess: active.filter((e) => isInProcess(e)),
+      physicalDefects: active.filter((e) => isPhysicalDefect(e)),
+      closed: active.filter((e) => isRefilledClosed(e)),
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }

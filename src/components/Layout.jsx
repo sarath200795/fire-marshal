@@ -17,6 +17,7 @@ import {
   ClipboardList,
   ListChecks,
   ScrollText,
+  Trash2,
   LogOut,
   Menu,
   X,
@@ -62,7 +63,7 @@ function NavItem({ to, icon: Icon, label, badge, onClick }) {
 
 export default function Layout() {
   const { profile, orgName, isAdmin, signOut } = useAuth()
-  const { pendingReports, pendingUsers, refillDue, inProcess, physicalDefects, physicalOpen } = useFleet()
+  const { pendingReports, pendingUsers, refillDue, inProcess, physicalDefects, physicalOpen, deletedExtinguishers } = useFleet()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -111,6 +112,7 @@ export default function Layout() {
           </p>
           <NavItem to="/app/users" icon={UsersIcon} label="Users" badge={pendingUsers.length} onClick={close} />
           <NavItem to="/app/audit" icon={ScrollText} label="Audit Log" onClick={close} />
+          <NavItem to="/app/recycle" icon={Trash2} label="Recycle Bin" badge={deletedExtinguishers.length} onClick={close} />
         </>
       )}
 

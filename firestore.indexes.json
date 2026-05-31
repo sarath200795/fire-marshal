@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "extinguishers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "approvalStatus", "order": "ASCENDING" },
+        { "fieldPath": "reportedAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -22,6 +22,23 @@ Built with **React (JSX) + Vite**, **Cloud Firestore + Firebase Auth**, **Tailwi
 - **Audit log:** every data change is recorded in an append-only `auditLogs` subcollection, viewable by
   admins at **/app/audit**. Firestore rules make these entries immutable (no update/delete).
 
+### Data safety & scale
+- **Soft-delete / Recycle Bin:** deleting an extinguisher marks `deletedAt`/`deletedBy` (and removes its
+  public QR mirror) instead of erasing it. Admins restore or permanently **purge** it at **/app/recycle**.
+  Purge (a hard delete) is admin-only, enforced by the rules.
+- **30-day auto-purge:** the Recycle Bin shows days-left; there's no backend cron, so do the actual purge
+  via a scheduled script. Example (Node + Admin SDK):
+  ```js
+  // purge-old.js — run on a schedule (cron / Cloud Scheduler / GitHub Action)
+  // deletes extinguishers whose deletedAt is older than 30 days.
+  ```
+  (Pattern: query each org's `extinguishers` where `deletedAt < now-30d` and `deleteDoc` them + their qr.)
+- **Backups:** admins can **Download full backup (JSON)** from the Recycle Bin page — a point-in-time
+  snapshot of org + extinguishers (incl. deleted) + reports + users.
+- **Scale cap:** the app loads the most recent **2,000** extinguishers into the live set (the dashboard +
+  lists derive from it client-side). A banner appears when the cap is hit. Composite indexes are in
+  `firestore.indexes.json` — deploy with `firebase deploy --only firestore:indexes`.
+
 ### Security model (multi-tenant isolation)
 The rules enforce, server-side: org docs/users/extinguishers/reports/audit are readable only by
 **approved members of that org**; QR mirror writes are locked to the **owning org**; public QR defect

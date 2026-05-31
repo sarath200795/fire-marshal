@@ -107,6 +107,11 @@ export function isClosed(ext) {
   return ext.status === STATUS.CLOSED
 }
 
+/** Soft-deleted (in the recycle bin) — excluded from all normal lists. */
+export function isDeleted(ext) {
+  return Boolean(ext.deletedAt)
+}
+
 /**
  * "Refilled & Closed" = a completed refill cycle. We log this via the
  * `lastRefilledAt` stamp written by markRefilledAndClosed, rather than the
@@ -150,7 +155,7 @@ export function healthColor(ext, today = new Date()) {
 /** Aggregate counts for the dashboard, computed once over the whole fleet. */
 export function fleetSummary(list, today = new Date()) {
   const summary = {
-    total: list.length,
+    total: list.filter((e) => !isDeleted(e)).length,
     healthy: 0,
     toBeRefilled: 0,
     inProcess: 0,
@@ -159,6 +164,7 @@ export function fleetSummary(list, today = new Date()) {
     categoryCounts: {},
   }
   for (const ext of list) {
+    if (isDeleted(ext)) continue // recycle-bin items never count
     const d = deriveStatus(ext, today)
     if (d.isHealthy) summary.healthy++
     if (isToBeRefilled(ext, today)) summary.toBeRefilled++

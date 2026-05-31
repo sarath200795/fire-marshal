@@ -50,11 +50,13 @@ service cloud.firestore {
       allow update, delete: if isAdminOf(orgId);
 
       // ── Extinguishers ── (org-scoped, validated)
+      // Soft-delete is an UPDATE (sets deletedAt) any member can do; a permanent
+      // PURGE is a real delete, restricted to admins.
       match /extinguishers/{extId} {
         allow read: if isApprovedMemberOf(orgId);
         allow create, update: if isApprovedMemberOf(orgId)
           && validExtinguisher(request.resource.data);
-        allow delete: if isApprovedMemberOf(orgId);
+        allow delete: if isAdminOf(orgId);
       }
 
       // ── Reports / approval queue ──

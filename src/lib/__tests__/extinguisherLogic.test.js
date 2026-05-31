@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   deriveStatus, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed,
-  isHealthy, severityLabel, fleetSummary,
+  isHealthy, severityLabel, fleetSummary, isDeleted,
 } from '../extinguisherLogic'
 import { STATUS } from '../constants'
 
@@ -93,5 +93,20 @@ describe('fleetSummary', () => {
     expect(s.healthy).toBe(2) // healthy() + the refilled one (active, far dates, no defects)
     expect(s.toBeRefilled).toBe(1)
     expect(s.closed).toBe(1)
+  })
+  it('excludes soft-deleted units from total and all counts', () => {
+    const list = [healthy(), healthy({ deletedAt: '2026-05-30', dateOfNextRefill: day(5) })]
+    const s = fleetSummary(list, TODAY)
+    expect(s.total).toBe(1)        // deleted one not counted
+    expect(s.toBeRefilled).toBe(0) // its due-soon date ignored
+    expect(s.healthy).toBe(1)
+  })
+})
+
+describe('isDeleted', () => {
+  it('true only when deletedAt is set', () => {
+    expect(isDeleted({ deletedAt: '2026-05-30' })).toBe(true)
+    expect(isDeleted(healthy())).toBe(false)
+    expect(isDeleted({ deletedAt: null })).toBe(false)
   })
 })

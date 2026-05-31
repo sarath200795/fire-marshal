@@ -28,6 +28,7 @@ const Closed = lazy(() => import('./pages/Closed'))
 const Approvals = lazy(() => import('./pages/Approvals'))
 const Users = lazy(() => import('./pages/Users'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
+const RecycleBin = lazy(() => import('./pages/RecycleBin'))
 
 function AppShell() {
   return (
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="approvals" element={<Approvals />} />
             <Route path="users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
             <Route path="audit" element={<ProtectedRoute adminOnly><AuditLog /></ProtectedRoute>} />
+            <Route path="recycle" element={<ProtectedRoute adminOnly><RecycleBin /></ProtectedRoute>} />
           </Route>
 
           <Route path="*" element={<Navigate to="/app/dashboard" replace />} />

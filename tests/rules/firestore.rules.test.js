@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 
 let testEnv
 
@@ -53,6 +53,7 @@ beforeEach(async () => {
 
 // Context helpers
 const member = () => testEnv.authenticatedContext(MEMBER_A).firestore()
+const adminA = () => testEnv.authenticatedContext(ADMIN_A).firestore()
 const adminB = () => testEnv.authenticatedContext(ADMIN_B).firestore()
 const anon = () => testEnv.unauthenticatedContext().firestore()
 
@@ -110,6 +111,20 @@ describe('extinguishers (validation)', () => {
     await assertFails(setDoc(doc(adminB(), 'organizations', ORG_A, 'extinguishers', 'x1'), {
       type: 'ABC', capacity: '5 Kg', entity: '1P', centerName: 'Bay 2', status: 'active',
     }))
+  })
+})
+
+describe('soft-delete vs purge', () => {
+  it('member can soft-delete (update deletedAt)', async () => {
+    await assertSucceeds(updateDoc(doc(member(), 'organizations', ORG_A, 'extinguishers', EXT_A), {
+      deletedAt: new Date(), deletedBy: 'Member A',
+    }))
+  })
+  it('member CANNOT purge (hard delete) — admin only', async () => {
+    await assertFails(deleteDoc(doc(member(), 'organizations', ORG_A, 'extinguishers', EXT_A)))
+  })
+  it('admin can purge (hard delete)', async () => {
+    await assertSucceeds(deleteDoc(doc(adminA(), 'organizations', ORG_A, 'extinguishers', EXT_A)))
   })
 })
 

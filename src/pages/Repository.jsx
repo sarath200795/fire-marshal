@@ -17,7 +17,7 @@ import { TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, STATUS_LABEL, CATEGORY_LI
 const ALL = '__all__'
 
 export default function Repository() {
-  const { extinguishers, org } = useFleet()
+  const { extinguishers, org, capped, loadCap } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const navigate = useNavigate()
   const today = useMemo(() => new Date(), [])
@@ -139,6 +139,13 @@ export default function Repository() {
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
         <button className="btn-ghost" onClick={doPrint}><QrCode size={16} /> Print QR</button>
       </PageHeader>
+
+      {capped && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <AlertTriangle size={16} />
+          <span>Showing the most recent <strong>{loadCap.toLocaleString()}</strong> extinguishers. Your fleet is larger — paginated views are coming; for now, narrow with filters or export.</span>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card mb-4 space-y-3 p-4">

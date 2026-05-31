@@ -66,7 +66,7 @@ function chipMeta(dim, value) {
 }
 
 export default function Dashboard() {
-  const { extinguishers } = useFleet()
+  const { extinguishers, capped, loadCap } = useFleet()
   const today = useMemo(() => new Date(), [])
 
   const [filters, setFilters] = useState(emptyFilters)
@@ -153,6 +153,13 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader title="Dashboard" subtitle="Click any chart segment to filter. Selections stack across charts." icon={LayoutDashboard} />
+
+      {capped && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <AlertTriangle size={16} />
+          <span>Metrics are based on the most recent <strong>{loadCap.toLocaleString()}</strong> extinguishers (your fleet is larger).</span>
+        </div>
+      )}
 
       {/* Filter bar (dropdowns mirror the same Sets) */}
       <div className="card mb-4 flex flex-wrap items-center gap-3 p-4">
