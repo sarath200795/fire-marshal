@@ -16,6 +16,9 @@ export const ENTITIES = ['1P', '2P', '3P', 'Fitso', 'EBO']
 export const REGIONS = ['North', 'South', 'East', 'West']
 export const DEFAULT_REGION = 'North'
 
+// Who is reporting a defect via a public QR scan
+export const REPORTER_ROLES = ['CM', 'Safety', 'CLM', 'Member', 'Vendor', 'Others']
+
 // Lifecycle status of an extinguisher
 export const STATUS = {
   ACTIVE: 'active',

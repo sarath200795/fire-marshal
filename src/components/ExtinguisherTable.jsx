@@ -46,6 +46,7 @@ export default function ExtinguisherTable({
   onToggleAll,
   showStatus = true,
   showDefectChips = true,
+  showActionBy = false,
   renderActions,
   onRowClick,
 }) {
@@ -75,6 +76,7 @@ export default function ExtinguisherTable({
               <th className="px-4 py-3">Next HPT</th>
               {showStatus && <th className="px-4 py-3">Status</th>}
               {showDefectChips && <th className="px-4 py-3">Condition</th>}
+              {showActionBy && <th className="px-4 py-3">Action By</th>}
               {renderActions && <th className="px-4 py-3 text-right">Actions</th>}
             </tr>
           </thead>
@@ -132,6 +134,18 @@ export default function ExtinguisherTable({
                   {showDefectChips && (
                     <td className="px-4 py-3">
                       <CategoryBadges ext={ext} today={today} max={3} />
+                    </td>
+                  )}
+                  {showActionBy && (
+                    <td className="px-4 py-3">
+                      {ext.lastActionBy ? (
+                        <div className="leading-tight">
+                          <div className="font-medium text-ink-800">{ext.lastActionBy}</div>
+                          {ext.lastAction && <div className="text-[11px] text-ink-400">{ext.lastAction}</div>}
+                        </div>
+                      ) : (
+                        <span className="text-ink-300">—</span>
+                      )}
                     </td>
                   )}
                   {renderActions && (

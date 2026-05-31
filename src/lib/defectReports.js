@@ -60,6 +60,8 @@ export function derivePhysicalDefectLog(reports = [], extinguishers = []) {
       status: ext.status,
       dateOfNextRefill: ext.dateOfNextRefill || '',
       dateOfNextHPT: ext.dateOfNextHPT || '',
+      lastActionBy: ext.lastActionBy || '',
+      lastAction: ext.lastAction || '',
       ...base,
     }
     ;(stillActive ? open : closed).push(row)

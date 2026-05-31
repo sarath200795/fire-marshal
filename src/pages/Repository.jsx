@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Search, Download, Trash2, QrCode, AlertTriangle, Filter, X, Pencil } from 'lucide-react'
+import { Boxes, Search, Download, Trash2, QrCode, AlertTriangle, Filter, X, Pencil, CheckCircle2, Truck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner, Badge } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
@@ -9,10 +9,10 @@ import ReportDefectModal from '../components/ReportDefectModal'
 import EditExtinguisherModal from '../components/EditExtinguisherModal'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
-import { deriveStatus } from '../lib/extinguisherLogic'
+import { deriveStatus, isToBeRefilled } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
-import { bulkDeleteExtinguishers } from '../lib/firestore'
-import { TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, STATUS_LABEL, CATEGORY_LIST } from '../lib/constants'
+import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects } from '../lib/firestore'
+import { TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, STATUS_LABEL, CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
 const ALL = '__all__'
 
@@ -34,6 +34,32 @@ export default function Repository() {
   const [editFor, setEditFor] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [busyId, setBusyId] = useState(null)
+
+  // Inline workflow actions (reuse the same helpers as the dedicated pages).
+  const sendToVendor = async (ext) => {
+    setBusyId(ext.id)
+    try {
+      await markReceivedByVendor(orgId, orgName, ext.id, profile?.name)
+      toast.success('Marked received by vendor — now In Process')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+  const resolvePhysical = async (ext) => {
+    setBusyId(ext.id)
+    try {
+      const remaining = (ext.physicalDefects || []).filter((k) => !PHYSICAL_DEFECT_KEYS.includes(k))
+      await resolveDefects(orgId, orgName, ext.id, remaining, profile?.name)
+      toast.success('Physical defects resolved')
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -202,19 +228,35 @@ export default function Repository() {
           selectedIds={selected}
           onToggle={toggle}
           onToggleAll={toggleAll}
-          renderActions={(ext) => (
-            <>
-              <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setEditFor(ext)} title="Edit details">
-                <Pencil size={14} />
-              </button>
-              <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report defect">
-                <AlertTriangle size={14} />
-              </button>
-              <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${ext.qrToken}`} target="_blank" rel="noreferrer" title="Open public QR page">
-                <QrCode size={14} />
-              </a>
-            </>
-          )}
+          showActionBy
+          renderActions={(ext) => {
+            const d = deriveStatus(ext, today)
+            const canResolve = d.hasPhysicalDefect && !d.isClosed
+            const canSendToVendor = isToBeRefilled(ext, today) && !d.inProcess && !d.isClosed
+            return (
+              <>
+                {canResolve && (
+                  <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" disabled={busyId === ext.id} onClick={() => resolvePhysical(ext)} title="Resolve physical defects">
+                    <CheckCircle2 size={14} /> Resolve
+                  </button>
+                )}
+                {canSendToVendor && (
+                  <button className="btn-soft px-2.5 py-1.5 text-xs" disabled={busyId === ext.id} onClick={() => sendToVendor(ext)} title="Mark received by vendor (In Process)">
+                    <Truck size={14} /> Send to vendor
+                  </button>
+                )}
+                <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setEditFor(ext)} title="Edit details">
+                  <Pencil size={14} />
+                </button>
+                <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report defect">
+                  <AlertTriangle size={14} />
+                </button>
+                <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${ext.qrToken}`} target="_blank" rel="noreferrer" title="Open public QR page">
+                  <QrCode size={14} />
+                </a>
+              </>
+            )
+          }}
         />
       )}
 

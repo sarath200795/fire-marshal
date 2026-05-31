@@ -131,6 +131,7 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
                   <th className="px-4 py-3">Defect</th>
                   <th className="px-4 py-3">Reported</th>
                   <th className="px-4 py-3">{isClosed ? 'Resolved' : 'Approved'}</th>
+                  <th className="px-4 py-3">Action By</th>
                   <th className="px-4 py-3 text-right">QR</th>
                 </tr>
               </thead>
@@ -158,6 +159,14 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
                       <td className="px-4 py-3"><Badge color={color}>{r.defectLabel}</Badge></td>
                       <td className="px-4 py-3 text-ink-600">{fmt(r.reportedAt)}</td>
                       <td className="px-4 py-3 text-ink-600">{fmt(r.reviewedAt)}</td>
+                      <td className="px-4 py-3">
+                        {r.lastActionBy ? (
+                          <div className="leading-tight">
+                            <div className="font-medium text-ink-800">{r.lastActionBy}</div>
+                            {r.lastAction && <div className="text-[11px] text-ink-400">{r.lastAction}</div>}
+                          </div>
+                        ) : <span className="text-ink-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         {r.qrToken ? (
                           <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${r.qrToken}`} target="_blank" rel="noreferrer" title="Public QR">

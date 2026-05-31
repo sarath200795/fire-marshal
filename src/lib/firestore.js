@@ -350,6 +350,7 @@ export async function createReport(orgId, report) {
     note: report.note || '',
     reportedBy: report.reportedBy || 'public',
     reportedByName: report.reportedByName || 'QR Scan (Public)',
+    reporterRole: report.reporterRole || null,
     source: report.source || 'portal',
     approvalStatus: 'pending',
     reportedAt: serverTimestamp(),
@@ -400,24 +401,36 @@ export async function rejectReport(orgId, report, reviewerName) {
 }
 
 // ── Workflow transitions (direct, used by portal action buttons) ───────────────
+// Each stamps who performed the action (lastActionBy/lastAction/lastActionAt).
+
+function actionStamp(actorName, label) {
+  return { lastActionBy: actorName || '', lastAction: label, lastActionAt: serverTimestamp() }
+}
 
 /** Vendor received the extinguisher for refilling. */
-export async function markReceivedByVendor(orgId, orgName, id) {
-  await updateExtinguisher(orgId, orgName, id, { status: STATUS.IN_PROCESS_REFILLING })
+export async function markReceivedByVendor(orgId, orgName, id, actorName) {
+  await updateExtinguisher(orgId, orgName, id, {
+    status: STATUS.IN_PROCESS_REFILLING,
+    ...actionStamp(actorName, 'Sent to vendor'),
+  })
 }
 
 /** Extinguisher refilled & returned: close it, set new due dates, clear defects. */
-export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefill, dateOfNextHPT }) {
+export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefill, dateOfNextHPT }, actorName) {
   await updateExtinguisher(orgId, orgName, id, {
     status: STATUS.ACTIVE,
     dateOfNextRefill,
     dateOfNextHPT,
     physicalDefects: [],
     lastRefilledAt: new Date().toISOString().slice(0, 10),
+    ...actionStamp(actorName, 'Refilled & Closed'),
   })
 }
 
 /** Resolve (clear) physical defects without a refill. */
-export async function resolveDefects(orgId, orgName, id, remainingDefects = []) {
-  await updateExtinguisher(orgId, orgName, id, { physicalDefects: remainingDefects })
+export async function resolveDefects(orgId, orgName, id, remainingDefects = [], actorName) {
+  await updateExtinguisher(orgId, orgName, id, {
+    physicalDefects: remainingDefects,
+    ...actionStamp(actorName, 'Resolved defects'),
+  })
 }

@@ -92,6 +92,9 @@ export default function Approvals() {
                           {r.source === 'qr' ? <Smartphone size={11} /> : <Building2 size={11} />}
                           {r.source === 'qr' ? 'QR scan' : 'Portal'}
                         </span>
+                        {r.reporterRole && (
+                          <span className="chip bg-brand-50 text-brand-700">Reported by: {r.reporterRole}</span>
+                        )}
                       </div>
                       <p className="text-sm text-ink-500">{r.extLabel || r.extId}</p>
                       <p className="mt-0.5 text-xs text-ink-400">{m.detail}</p>
@@ -125,6 +128,7 @@ export default function Approvals() {
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: m.color }} />
                   <span className="font-semibold text-ink-800">{m.title}</span>
                   <span className="text-sm text-ink-400">{r.extLabel || r.extId}</span>
+                  {r.reporterRole && <span className="chip bg-brand-50 text-brand-700">{r.reporterRole}</span>}
                   <Badge className="ml-auto" color={r.approvalStatus === 'approved' ? '#16a34a' : '#dc2626'}>
                     {r.approvalStatus === 'approved' ? 'Approved' : 'Rejected'}
                   </Badge>

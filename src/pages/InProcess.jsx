@@ -10,7 +10,7 @@ import { exportExtinguishers } from '../lib/exporter'
 
 export default function InProcess() {
   const { inProcess } = useFleet()
-  const { orgId, orgName } = useAuth()
+  const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [closing, setClosing] = useState(null) // ext being closed
   const [dates, setDates] = useState({ dateOfNextRefill: '', dateOfNextHPT: '' })
@@ -33,7 +33,7 @@ export default function InProcess() {
     }
     setBusy(true)
     try {
-      await markRefilledAndClosed(orgId, orgName, closing.id, dates)
+      await markRefilledAndClosed(orgId, orgName, closing.id, dates, profile?.name)
       toast.success('Refilled & closed — dates updated, defects cleared')
       setClosing(null)
     } catch (e) {
@@ -59,6 +59,7 @@ export default function InProcess() {
         <ExtinguisherTable
           items={inProcess}
           today={today}
+          showActionBy
           renderActions={(ext) => (
             <>
               <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openClose(ext)}>

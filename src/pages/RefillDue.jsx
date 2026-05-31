@@ -25,7 +25,7 @@ export default function RefillDue() {
   const receive = async (ext) => {
     setBusyId(ext.id)
     try {
-      await markReceivedByVendor(orgId, orgName, ext.id)
+      await markReceivedByVendor(orgId, orgName, ext.id, profile?.name)
       toast.success('Marked received by vendor — now In Process')
     } catch (e) {
       toast.error(e.message)

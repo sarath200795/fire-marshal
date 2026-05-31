@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { AlertTriangle, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
-import { DEFECTS } from '../lib/constants'
+import { DEFECTS, REPORTER_ROLES } from '../lib/constants'
 import { createReport } from '../lib/firestore'
 
 /**
@@ -16,7 +16,10 @@ import { createReport } from '../lib/firestore'
 export default function ReportDefectModal({ open, onClose, ext, orgId, reporter, source = 'portal' }) {
   const [selected, setSelected] = useState(null)
   const [note, setNote] = useState('')
+  const [role, setRole] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const isQr = source === 'qr'
 
   if (!ext) return null
   const extId = ext.extId || ext.id
@@ -24,6 +27,7 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
 
   const submit = async () => {
     if (!selected) return toast.error('Select a defect type')
+    if (isQr && !role) return toast.error('Select who is reporting')
     setBusy(true)
     try {
       await createReport(orgId, {
@@ -34,11 +38,13 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
         note,
         reportedBy: reporter?.uid || 'public',
         reportedByName: reporter?.name || 'QR Scan (Public)',
+        reporterRole: isQr ? role : null,
         source,
       })
       toast.success('Defect reported — pending approval')
       setSelected(null)
       setNote('')
+      setRole('')
       onClose?.()
     } catch (e) {
       toast.error(e.message)
@@ -79,6 +85,16 @@ export default function ReportDefectModal({ open, onClose, ext, orgId, reporter,
           )
         })}
       </div>
+
+      {isQr && (
+        <div className="mt-4">
+          <label className="label">Reported by *</label>
+          <select className="input" value={role} onChange={(e) => setRole(e.target.value)} required>
+            <option value="" disabled>Select who is reporting…</option>
+            {REPORTER_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="mt-4">
         <label className="label">Note (optional)</label>

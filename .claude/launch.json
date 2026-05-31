@@ -12,6 +12,10 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview", "--", "--port", "4173"],
       "port": 4173
+    },
+    {
+      "name": "fire-marshal-live",
+      "url": "https://fire-marshal.vercel.app"
     }
   ]
 }

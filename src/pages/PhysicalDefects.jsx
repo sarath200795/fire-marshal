@@ -32,7 +32,7 @@ export default function PhysicalDefects() {
     try {
       // keep any refill-type defects, clear only physical ones
       const remaining = (resolving.physicalDefects || []).filter((k) => !PHYSICAL_DEFECT_KEYS.includes(k))
-      await resolveDefects(orgId, orgName, resolving.id, remaining)
+      await resolveDefects(orgId, orgName, resolving.id, remaining, profile?.name)
       toast.success('Physical defects resolved')
       setResolving(null)
     } catch (e) {

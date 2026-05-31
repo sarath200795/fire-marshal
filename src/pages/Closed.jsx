@@ -33,6 +33,7 @@ export default function Closed() {
           items={closed}
           today={today}
           showDefectChips={false}
+          showActionBy
           renderActions={(ext) => (
             <a className="btn-ghost px-2.5 py-1.5 text-xs" href={`/qr/${ext.qrToken}`} target="_blank" rel="noreferrer" title="Public QR">
               <QrCode size={14} />
