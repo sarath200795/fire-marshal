@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
+import ExtinguishAnimation from './ExtinguishAnimation'
 
 // ── Loading spinner ─────────────────────────────────────────────────────────
 export function Spinner({ size = 24, className = '' }) {
@@ -15,14 +16,15 @@ export function Spinner({ size = 24, className = '' }) {
 
 export function FullScreenLoader({ label = 'Loading…' }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-ink-50 text-ink-500">
-      <div className="relative">
-        <span className="absolute inset-0 animate-pulseRing rounded-full" />
-        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-2xl shadow-glow">
-          🔥
-        </div>
-      </div>
-      <p className="text-sm font-medium">{label}</p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-ink-50 text-ink-500">
+      <ExtinguishAnimation size={170} />
+      <motion.p
+        className="text-sm font-medium"
+        animate={{ opacity: [0.4, 1, 0.4] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        {label}
+      </motion.p>
     </div>
   )
 }
