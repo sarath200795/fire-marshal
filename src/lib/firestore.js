@@ -626,6 +626,26 @@ function actionStamp(actorName, label) {
   return { lastActionBy: actorName || '', lastAction: label, lastActionAt: serverTimestamp() }
 }
 
+/**
+ * Submit a vendor quotation for the current defect/refill cycle. Must happen
+ * before an item can progress (received-by-vendor / resolve). Stored on the
+ * extinguisher doc; cleared when the cycle completes.
+ */
+export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref, notes }, actorName) {
+  const quotation = {
+    amount: Number(amount) || 0,
+    vendor: vendor || '',
+    ref: ref || '',
+    notes: notes || '',
+    submittedAt: new Date().toISOString().slice(0, 10),
+    submittedBy: actorName || '',
+  }
+  await updateExtinguisher(orgId, orgName, id, {
+    quotation,
+    ...actionStamp(actorName, 'Quotation submitted'),
+  }, { actor: { name: actorName }, action: AUDIT.WF_QUOTATION_SUBMITTED, summary: `Quotation submitted (${quotation.amount}, ${quotation.vendor || 'vendor n/a'})` })
+}
+
 /** Vendor received the extinguisher for refilling. */
 export async function markReceivedByVendor(orgId, orgName, id, actorName) {
   await updateExtinguisher(orgId, orgName, id, {
@@ -641,6 +661,7 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
     dateOfNextRefill,
     dateOfNextHPT,
     physicalDefects: [],
+    quotation: null,
     lastRefilledAt: new Date().toISOString().slice(0, 10),
     ...actionStamp(actorName, 'Refilled & Closed'),
   }, { actor: { name: actorName }, action: AUDIT.WF_REFILLED_CLOSED, summary: `Refilled & closed (next refill ${dateOfNextRefill}, next HPT ${dateOfNextHPT})` })
@@ -650,6 +671,7 @@ export async function markRefilledAndClosed(orgId, orgName, id, { dateOfNextRefi
 export async function resolveDefects(orgId, orgName, id, remainingDefects = [], actorName) {
   await updateExtinguisher(orgId, orgName, id, {
     physicalDefects: remainingDefects,
+    quotation: null,
     ...actionStamp(actorName, 'Resolved defects'),
   }, { actor: { name: actorName }, action: AUDIT.WF_RESOLVED_DEFECTS, summary: 'Physical defects resolved' })
 }

@@ -1,16 +1,17 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Search, Download, Trash2, QrCode, AlertTriangle, Filter, X, Pencil, CheckCircle2, Truck, ChevronDown } from 'lucide-react'
+import { Boxes, Search, Download, Trash2, QrCode, AlertTriangle, Filter, X, Pencil, CheckCircle2, Truck, ChevronDown, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import EditExtinguisherModal from '../components/EditExtinguisherModal'
+import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { usePaginatedList } from '../hooks/usePaginatedList'
-import { deriveStatus, isToBeRefilled } from '../lib/extinguisherLogic'
+import { deriveStatus, isToBeRefilled, hasQuotation } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
 import {
   bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects,
@@ -39,6 +40,7 @@ export default function Repository() {
 
   const [selected, setSelected] = useState(new Set())
   const [reportFor, setReportFor] = useState(null)
+  const [quoteFor, setQuoteFor] = useState(null)
   const [editFor, setEditFor] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -97,6 +99,10 @@ export default function Repository() {
       setBusyId(null)
     }
   }
+
+  // Patch the loaded row when a quotation is submitted so the action flips immediately.
+  const onQuoted = (ext, quotation) =>
+    patchRows((prev) => prev.map((r) => (r.id === ext.id ? { ...r, quotation } : r)))
 
   const toggleCat = (key) => setActiveCats((prev) => {
     const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
@@ -258,17 +264,29 @@ export default function Repository() {
               const d = deriveStatus(ext, today)
               const canResolve = d.hasPhysicalDefect && !d.isClosed
               const canSendToVendor = isToBeRefilled(ext, today) && !d.inProcess && !d.isClosed
+              const quoted = hasQuotation(ext)
+              const needsQuote = (canResolve || canSendToVendor) && !quoted
               return (
                 <>
-                  {canResolve && (
+                  {needsQuote && (
+                    <button className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before this can move forward">
+                      <FileText size={14} /> Submit quotation
+                    </button>
+                  )}
+                  {canResolve && quoted && (
                     <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" disabled={busyId === ext.id} onClick={() => resolvePhysical(ext)} title="Resolve physical defects">
                       <CheckCircle2 size={14} /> Resolve
                     </button>
                   )}
-                  {canSendToVendor && (
+                  {canSendToVendor && quoted && (
                     <button className="btn-soft px-2.5 py-1.5 text-xs" disabled={busyId === ext.id} onClick={() => sendToVendor(ext)} title="Mark received by vendor (In Process)">
                       <Truck size={14} /> Send to vendor
                     </button>
+                  )}
+                  {(canResolve || canSendToVendor) && quoted && (
+                    <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
+                      <CheckCircle2 size={12} /> Quoted
+                    </span>
                   )}
                   <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setEditFor(ext)} title="Edit details">
                     <Pencil size={14} />
@@ -313,6 +331,16 @@ export default function Repository() {
         orgId={orgId}
         orgName={org?.name || orgName}
         actor={{ uid: profile?.uid, name: profile?.name }}
+      />
+
+      <SubmitQuotationModal
+        open={!!quoteFor}
+        onClose={() => setQuoteFor(null)}
+        ext={quoteFor}
+        orgId={orgId}
+        orgName={org?.name || orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
+        onSubmitted={(q) => quoteFor && onQuoted(quoteFor, q)}
       />
 
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete extinguishers?">

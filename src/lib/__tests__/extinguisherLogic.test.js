@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   deriveStatus, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed,
-  isHealthy, severityLabel, fleetSummary, isDeleted,
+  isHealthy, severityLabel, fleetSummary, isDeleted, hasQuotation, needsQuotation,
 } from '../extinguisherLogic'
 import { STATUS } from '../constants'
 
@@ -100,6 +100,30 @@ describe('fleetSummary', () => {
     expect(s.total).toBe(1)        // deleted one not counted
     expect(s.toBeRefilled).toBe(0) // its due-soon date ignored
     expect(s.healthy).toBe(1)
+  })
+})
+
+describe('quotation gate', () => {
+  const quote = { amount: 1200, vendor: 'Acme', submittedAt: '2026-05-30' }
+  it('hasQuotation reflects a submitted quotation', () => {
+    expect(hasQuotation(healthy())).toBe(false)
+    expect(hasQuotation(healthy({ quotation: null }))).toBe(false)
+    expect(hasQuotation(healthy({ quotation: { amount: 0 } }))).toBe(false) // no submittedAt
+    expect(hasQuotation(healthy({ quotation: quote }))).toBe(true)
+  })
+  it('needsQuotation: refill-due item with no quote needs one', () => {
+    const e = healthy({ dateOfNextRefill: day(10) })
+    expect(needsQuotation(e, TODAY)).toBe(true)
+  })
+  it('needsQuotation: physical-defect item with no quote needs one', () => {
+    expect(needsQuotation(healthy({ physicalDefects: ['hose_pipe'] }), TODAY)).toBe(true)
+  })
+  it('needsQuotation: false once a quotation is present', () => {
+    const e = healthy({ dateOfNextRefill: day(10), quotation: quote })
+    expect(needsQuotation(e, TODAY)).toBe(false)
+  })
+  it('needsQuotation: false for a healthy item', () => {
+    expect(needsQuotation(healthy(), TODAY)).toBe(false)
   })
 })
 

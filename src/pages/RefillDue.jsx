@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw, Truck, AlertTriangle, QrCode, Download } from 'lucide-react'
+import { RefreshCw, Truck, AlertTriangle, QrCode, Download, FileText, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
+import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markReceivedByVendor } from '../lib/firestore'
+import { hasQuotation } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
 
 export default function RefillDue() {
@@ -14,6 +16,7 @@ export default function RefillDue() {
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
+  const [quoteFor, setQuoteFor] = useState(null)
   const [busyId, setBusyId] = useState(null)
 
   const doExport = () => {
@@ -52,13 +55,29 @@ export default function RefillDue() {
           today={today}
           renderActions={(ext) => (
             <>
-              <button
-                className="btn-soft px-2.5 py-1.5 text-xs"
-                disabled={busyId === ext.id}
-                onClick={() => receive(ext)}
-              >
-                <Truck size={14} /> Received by vendor
-              </button>
+              {hasQuotation(ext) ? (
+                <button
+                  className="btn-soft px-2.5 py-1.5 text-xs"
+                  disabled={busyId === ext.id}
+                  onClick={() => receive(ext)}
+                  title="Quotation submitted — move to In Process"
+                >
+                  <Truck size={14} /> Received by vendor
+                </button>
+              ) : (
+                <button
+                  className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700"
+                  onClick={() => setQuoteFor(ext)}
+                  title="Submit a vendor quotation before this can move forward"
+                >
+                  <FileText size={14} /> Submit quotation
+                </button>
+              )}
+              {hasQuotation(ext) && (
+                <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
+                  <CheckCircle2 size={12} /> Quoted
+                </span>
+              )}
               <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report defect">
                 <AlertTriangle size={14} />
               </button>
@@ -76,6 +95,15 @@ export default function RefillDue() {
         ext={reportFor}
         orgId={orgId}
         reporter={{ uid: profile?.uid, name: profile?.name }}
+      />
+
+      <SubmitQuotationModal
+        open={!!quoteFor}
+        onClose={() => setQuoteFor(null)}
+        ext={quoteFor}
+        orgId={orgId}
+        orgName={orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
       />
     </div>
   )

@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react'
-import { Wrench, AlertTriangle, QrCode, CheckCircle2, Download } from 'lucide-react'
+import { Wrench, AlertTriangle, QrCode, CheckCircle2, Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
+import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveDefects } from '../lib/firestore'
 import { exportExtinguishers } from '../lib/exporter'
-import { deriveStatus } from '../lib/extinguisherLogic'
+import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
 export default function PhysicalDefects() {
@@ -16,6 +17,7 @@ export default function PhysicalDefects() {
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
+  const [quoteFor, setQuoteFor] = useState(null)
   const [resolving, setResolving] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -60,9 +62,20 @@ export default function PhysicalDefects() {
           today={today}
           renderActions={(ext) => (
             <>
-              <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => setResolving(ext)}>
-                <CheckCircle2 size={14} /> Resolve
-              </button>
+              {hasQuotation(ext) ? (
+                <button className="btn bg-green-600 px-2.5 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => setResolving(ext)} title="Quotation submitted — resolve defects">
+                  <CheckCircle2 size={14} /> Resolve
+                </button>
+              ) : (
+                <button className="btn bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-700" onClick={() => setQuoteFor(ext)} title="Submit a vendor quotation before resolving">
+                  <FileText size={14} /> Submit quotation
+                </button>
+              )}
+              {hasQuotation(ext) && (
+                <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
+                  <CheckCircle2 size={12} /> Quoted
+                </span>
+              )}
               <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report another defect">
                 <AlertTriangle size={14} />
               </button>
@@ -80,6 +93,15 @@ export default function PhysicalDefects() {
         ext={reportFor}
         orgId={orgId}
         reporter={{ uid: profile?.uid, name: profile?.name }}
+      />
+
+      <SubmitQuotationModal
+        open={!!quoteFor}
+        onClose={() => setQuoteFor(null)}
+        ext={quoteFor}
+        orgId={orgId}
+        orgName={orgName}
+        actor={{ uid: profile?.uid, name: profile?.name }}
       />
 
       <Modal open={!!resolving} onClose={() => setResolving(null)} title="Resolve physical defects">
