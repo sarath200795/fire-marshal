@@ -19,12 +19,14 @@ import {
   writeBatch,
   limit,
   startAfter,
+  increment,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS } from './constants'
 import { AUDIT, diffSummary } from './audit'
 import { buildExtinguisherConstraints } from './extinguisherQuery'
+import { statsDeltaFor, accumulate } from './stats'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 const orgRef = (orgId) => doc(db, 'organizations', orgId)
