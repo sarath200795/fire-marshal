@@ -12,3 +12,4 @@ npm-debug.log*
 *-debug.log
 firestore-debug.log
 firebase-debug.log
+COMMIT_MSG.txt
