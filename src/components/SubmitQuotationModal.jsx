@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
-import { FileText, Send } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { FileText, Send, Paperclip, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Modal, Spinner } from './ui'
 import { submitQuotation } from '../lib/firestore'
+import { readFileAsDataUrl, MAX_QUOTE_FILE_BYTES } from '../lib/fileToDataUrl'
 
 function Field({ label, children }) {
   return (
@@ -22,7 +23,10 @@ function Field({ label, children }) {
  */
 export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgName, actor, onSubmitted }) {
   const [form, setForm] = useState({ amount: '', vendor: '', ref: '', notes: '' })
+  // Attached document: { name, type, data(base64) }. null = none.
+  const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     if (ext) {
@@ -33,24 +37,47 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
         ref: q.ref || '',
         notes: q.notes || '',
       })
+      // Prefill an existing attachment so re-submitting keeps it unless replaced.
+      setFile(q.fileData ? { name: q.fileName || 'quotation', type: q.fileType || '', data: q.fileData } : null)
     }
   }, [ext])
 
   if (!ext) return null
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
+  const pickFile = async (f) => {
+    if (!f) return
+    try {
+      const data = await readFileAsDataUrl(f)
+      setFile({ name: f.name, type: f.type, data })
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   const submit = async () => {
     if (!form.amount || Number(form.amount) <= 0) return toast.error('Enter a valid quotation amount')
     if (!form.vendor.trim()) return toast.error('Vendor is required')
     setBusy(true)
     try {
-      await submitQuotation(orgId, orgName, ext.id, form, actor?.name)
+      const payload = {
+        ...form,
+        fileName: file?.name || '',
+        fileType: file?.type || '',
+        fileData: file?.data || null,
+      }
+      await submitQuotation(orgId, orgName, ext.id, payload, actor?.name)
       toast.success('Quotation submitted')
       onSubmitted?.({
         amount: Number(form.amount) || 0,
         vendor: form.vendor,
         ref: form.ref,
         notes: form.notes,
+        fileName: payload.fileName,
+        fileType: payload.fileType,
+        fileData: payload.fileData,
         submittedAt: new Date().toISOString().slice(0, 10),
         submittedBy: actor?.name || '',
       })
@@ -90,6 +117,50 @@ export default function SubmitQuotationModal({ open, onClose, ext, orgId, orgNam
         <Field label="Notes">
           <textarea className="input min-h-[72px]" value={form.notes} onChange={set('notes')} placeholder="Scope, terms, anything relevant…" />
         </Field>
+      </div>
+
+      <div className="mt-4">
+        <label className="label">Quotation document (optional)</label>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          onChange={(e) => pickFile(e.target.files?.[0])}
+        />
+        {file ? (
+          <div className="flex items-center gap-2 rounded-2xl bg-clay-surface px-3 py-2.5 text-sm shadow-clay-inset">
+            <Paperclip size={15} className="shrink-0 text-ink-400" />
+            <a
+              href={file.data}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 truncate font-medium text-brand-700 hover:underline"
+              title="Open attached document"
+            >
+              {file.name}
+            </a>
+            <button
+              type="button"
+              className="rounded-lg p-1 text-ink-400 hover:bg-clay-100 hover:text-ink-700"
+              onClick={() => setFile(null)}
+              title="Remove file"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn-ghost w-full justify-center"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Paperclip size={15} /> Attach PDF or image
+          </button>
+        )}
+        <p className="mt-1 text-xs text-ink-400">
+          PDF or image, up to {Math.round(MAX_QUOTE_FILE_BYTES / 1024)} KB.
+        </p>
       </div>
 
       <div className="mt-6 flex justify-end gap-2">

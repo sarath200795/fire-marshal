@@ -246,6 +246,7 @@ export async function addExtinguisher(orgId, orgName, data, actor) {
     dateOfNextHPT: data.dateOfNextHPT || '',
     status: STATUS.ACTIVE,
     physicalDefects: [],
+    deletedAt: null,
     qrToken,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -286,6 +287,7 @@ export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
         dateOfNextHPT: data.dateOfNextHPT || '',
         status: STATUS.ACTIVE,
         physicalDefects: [],
+        deletedAt: null,
         qrToken,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -348,6 +350,7 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
         dateOfNextHPT: data.dateOfNextHPT || '',
         status: STATUS.ACTIVE,
         physicalDefects: [],
+        deletedAt: null,
         qrToken,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -491,6 +494,27 @@ export function subscribeExtinguishers(orgId, cb, max = EXT_LOAD_CAP) {
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
 }
 
+/**
+ * One-time migration: older extinguishers created before soft-delete don't have
+ * a `deletedAt` field at all, so the Repository's server query
+ * `where('deletedAt','==',null)` skips them (Firestore == null does NOT match a
+ * missing field). Backfill `deletedAt: null` on any loaded doc missing it so it
+ * becomes visible to the paginated query. Silent (no audit — it's a migration).
+ * Returns the number of docs fixed. Runs only for docs where the field is
+ * strictly `undefined` (absent) — never touches explicitly soft-deleted docs.
+ */
+export async function backfillDeletedAt(orgId, list = []) {
+  const missing = list.filter((e) => e && e.id && e.deletedAt === undefined)
+  if (!missing.length) return 0
+  for (let i = 0; i < missing.length; i += 400) {
+    const chunk = missing.slice(i, i + 400)
+    const batch = writeBatch(db)
+    for (const e of chunk) batch.update(extRef(orgId, e.id), { deletedAt: null })
+    await batch.commit()
+  }
+  return missing.length
+}
+
 export const PAGE_SIZE = 50
 
 /**
@@ -631,12 +655,15 @@ function actionStamp(actorName, label) {
  * before an item can progress (received-by-vendor / resolve). Stored on the
  * extinguisher doc; cleared when the cycle completes.
  */
-export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref, notes }, actorName) {
+export async function submitQuotation(orgId, orgName, id, { amount, vendor, ref, notes, fileName, fileType, fileData }, actorName) {
   const quotation = {
     amount: Number(amount) || 0,
     vendor: vendor || '',
     ref: ref || '',
     notes: notes || '',
+    fileName: fileName || '',
+    fileType: fileType || '',
+    fileData: fileData || null, // base64 data URL (≤~700KB) or null
     submittedAt: new Date().toISOString().slice(0, 10),
     submittedBy: actorName || '',
   }

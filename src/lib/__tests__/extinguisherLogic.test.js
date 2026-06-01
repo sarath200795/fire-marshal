@@ -133,4 +133,9 @@ describe('isDeleted', () => {
     expect(isDeleted(healthy())).toBe(false)
     expect(isDeleted({ deletedAt: null })).toBe(false)
   })
+  it('treats a doc with an ABSENT deletedAt field as active (not deleted)', () => {
+    // Pre-soft-delete docs have no deletedAt at all — must still count as active.
+    const legacy = { status: STATUS.ACTIVE } // no deletedAt key
+    expect(isDeleted(legacy)).toBe(false)
+  })
 })

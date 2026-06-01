@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 import {
   subscribeExtinguishers,
@@ -6,6 +6,7 @@ import {
   subscribeOrgUsers,
   subscribeOrg,
   subscribeStats,
+  backfillDeletedAt,
 } from '../lib/firestore'
 import {
   fleetSummary,
@@ -33,6 +34,8 @@ export function FleetProvider({ children }) {
   const [org, setOrg] = useState(null)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  // Run the deletedAt backfill at most once per org per session.
+  const backfilledRef = useRef(null)
 
   useEffect(() => {
     if (!orgId) return
@@ -47,6 +50,16 @@ export function FleetProvider({ children }) {
     const u1 = subscribeExtinguishers(orgId, (list) => {
       setExtinguishers(list)
       done()
+      // One-time migration: make pre-soft-delete docs visible to the Repository's
+      // server query (which filters deletedAt == null). Fire-and-forget; the
+      // listener re-delivers the patched docs automatically.
+      if (backfilledRef.current !== orgId && list.some((e) => e && e.deletedAt === undefined)) {
+        backfilledRef.current = orgId
+        backfillDeletedAt(orgId, list).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[Fire Marshal] deletedAt backfill failed:', err?.message || err)
+        })
+      }
     })
     const u2 = subscribeReports(orgId, setReports)
     const u3 = subscribeOrgUsers(orgId, setUsers)

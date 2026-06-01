@@ -72,9 +72,15 @@ export default function PhysicalDefects() {
                 </button>
               )}
               {hasQuotation(ext) && (
-                <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
-                  <CheckCircle2 size={12} /> Quoted
-                </span>
+                ext.quotation?.fileData ? (
+                  <a href={ext.quotation.fileData} target="_blank" rel="noreferrer" className="chip bg-cyan-50 text-cyan-700 hover:underline" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''} — view document`}>
+                    <CheckCircle2 size={12} /> Quoted · View
+                  </a>
+                ) : (
+                  <span className="chip bg-cyan-50 text-cyan-700" title={`Quoted ${ext.quotation?.amount ?? ''} · ${ext.quotation?.vendor || ''}`}>
+                    <CheckCircle2 size={12} /> Quoted
+                  </span>
+                )
               )}
               <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setReportFor(ext)} title="Report another defect">
                 <AlertTriangle size={14} />
