@@ -55,6 +55,21 @@ function segOpacity(set, value) {
   return set.has(value) ? 1 : 0.3
 }
 
+// Crisp white, bold value label placed inside each pie slice (clearly legible
+// against the colored fills — the default recharts label is faint gray).
+function renderPieValue({ cx, cy, midAngle, innerRadius, outerRadius, value }) {
+  if (!value) return null
+  const RAD = Math.PI / 180
+  const r = innerRadius + (outerRadius - innerRadius) * 0.5
+  const x = cx + r * Math.cos(-midAngle * RAD)
+  const y = cy + r * Math.sin(-midAngle * RAD)
+  return (
+    <text x={x} y={y} fill="#fff" fontSize={14} fontWeight={800} textAnchor="middle" dominantBaseline="central">
+      {value}
+    </text>
+  )
+}
+
 // Look up a display label + color for a chip.
 const STATUS_VALUES = Object.values(STATUS)
 function chipMeta(dim, value) {
@@ -295,6 +310,28 @@ export default function Dashboard() {
         })}
       </div>
 
+      {/* Color-coded condition legend — click to toggle the category filter */}
+      <ChartCard title="Condition legend" subtitle="Click a condition to filter the dashboard" className="mb-4">
+        <div className="flex flex-wrap gap-2">
+          {CATEGORY_LIST.map((c) => {
+            const count = summary.categoryCounts[c.key] || 0
+            const on = filters.category.has(c.key)
+            return (
+              <button
+                key={c.key}
+                onClick={() => toggle('category', c.key)}
+                className="chip transition hover:scale-105"
+                style={on ? { backgroundColor: c.color, color: '#fff' } : { backgroundColor: `${c.color}1a`, color: c.color }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: on ? '#fff' : c.color }} />
+                {c.label}
+                <span className="ml-1 rounded-full bg-white/70 px-1.5 text-[10px] font-bold text-ink-700">{count}</span>
+              </button>
+            )
+          })}
+        </div>
+      </ChartCard>
+
       {/* Charts grid */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Fleet health gauge */}
@@ -318,7 +355,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={224}>
               <PieChart>
                 <Pie data={typeData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={88} paddingAngle={3}
-                  label={({ value }) => value} onClick={(d) => toggle('type', d.name)} className="cursor-pointer">
+                  label={renderPieValue} labelLine={false} onClick={(d) => toggle('type', d.name)} className="cursor-pointer">
                   {typeData.map((d) => <Cell key={d.name} fill={d.color} fillOpacity={segOpacity(filters.type, d.name)} />)}
                 </Pie>
                 <Tooltip />
@@ -334,7 +371,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={224}>
               <PieChart>
                 <Pie data={regionData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={88} paddingAngle={3}
-                  label={({ value }) => value} onClick={(d) => toggle('region', d.name)} className="cursor-pointer">
+                  label={renderPieValue} labelLine={false} onClick={(d) => toggle('region', d.name)} className="cursor-pointer">
                   {regionData.map((d) => <Cell key={d.name} fill={d.color} fillOpacity={segOpacity(filters.region, d.name)} />)}
                 </Pie>
                 <Tooltip />
@@ -348,12 +385,12 @@ export default function Dashboard() {
         <ChartCard title="By Entity" subtitle="Click a bar to filter">
           <ResponsiveContainer width="100%" height={224}>
             <BarChart data={entityData}>
-              <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} />
+              <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} tick={{ fill: '#1c2230' }} />
+              <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} tick={{ fill: '#62718c' }} />
               <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
               <Bar dataKey="value" radius={[8, 8, 0, 0]} onClick={(d) => toggle('entity', d.name)} className="cursor-pointer">
                 {entityData.map((d) => <Cell key={d.name} fill={d.color} fillOpacity={segOpacity(filters.entity, d.name)} />)}
-                <LabelList dataKey="value" position="top" fontSize={12} />
+                <LabelList dataKey="value" position="top" fontSize={13} fontWeight={800} fill="#1c2230" />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -365,7 +402,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={224}>
               <PieChart>
                 <Pie data={statusData} dataKey="value" nameKey="name" outerRadius={88}
-                  label={({ value }) => value} onClick={(d) => toggle('status', d.key)} className="cursor-pointer">
+                  label={renderPieValue} labelLine={false} onClick={(d) => toggle('status', d.key)} className="cursor-pointer">
                   {statusData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.status, d.key)} />)}
                 </Pie>
                 <Tooltip />
@@ -380,11 +417,11 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={224}>
               <BarChart data={categoryData} layout="vertical" margin={{ left: 8, right: 28 }}>
                 <XAxis type="number" allowDecimals={false} hide />
-                <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} fontSize={11} />
+                <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} fontSize={11} tick={{ fill: '#1c2230' }} />
                 <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
                 <Bar dataKey="value" radius={[0, 8, 8, 0]} onClick={(d) => toggle('category', d.key)} className="cursor-pointer">
                   {categoryData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.category, d.key)} />)}
-                  <LabelList dataKey="value" position="right" fontSize={12} />
+                  <LabelList dataKey="value" position="right" fontSize={13} fontWeight={800} fill="#1c2230" />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -396,28 +433,6 @@ export default function Dashboard() {
           )}
         </ChartCard>
       </div>
-
-      {/* Color-coded condition legend — click to toggle the category filter */}
-      <ChartCard title="Condition legend" subtitle="Click a condition to filter the dashboard" className="mt-4">
-        <div className="flex flex-wrap gap-2">
-          {CATEGORY_LIST.map((c) => {
-            const count = summary.categoryCounts[c.key] || 0
-            const on = filters.category.has(c.key)
-            return (
-              <button
-                key={c.key}
-                onClick={() => toggle('category', c.key)}
-                className="chip transition hover:scale-105"
-                style={on ? { backgroundColor: c.color, color: '#fff' } : { backgroundColor: `${c.color}1a`, color: c.color }}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: on ? '#fff' : c.color }} />
-                {c.label}
-                <span className="ml-1 rounded-full bg-white/70 px-1.5 text-[10px] font-bold text-ink-700">{count}</span>
-              </button>
-            )
-          })}
-        </div>
-      </ChartCard>
     </div>
   )
 }
