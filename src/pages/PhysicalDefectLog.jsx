@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
-import { Wrench, CheckCircle2, Search, X, Filter, Download, QrCode } from 'lucide-react'
+import { Wrench, CheckCircle2, Download, QrCode } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Badge } from '../components/ui'
+import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { exportExtinguishers } from '../lib/exporter'
 import { toDate } from '../lib/extinguisherLogic'
-import {
-  TYPES, CAPACITIES, ENTITIES, REGIONS, PHYSICAL_DEFECT_KEYS, DEFECT_BY_KEY, REGION_COLORS,
-} from '../lib/constants'
-
-const ALL = '__all__'
+import { emptyFilters, applyListFilters } from '../lib/listFilter'
+import { DEFECT_BY_KEY, REGION_COLORS } from '../lib/constants'
 
 /**
  * Records of physical-defect reports (approved).
@@ -23,30 +21,9 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
   const fleet = useFleet()
   const rows = mode === 'open' ? fleet.physicalOpen : fleet.physicalClosed
 
-  const [search, setSearch] = useState('')
-  const [type, setType] = useState(ALL)
-  const [capacity, setCapacity] = useState(ALL)
-  const [entity, setEntity] = useState(ALL)
-  const [region, setRegion] = useState(ALL)
-  const [defect, setDefect] = useState(ALL)
+  const [filters, setFilters] = useState(emptyFilters())
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return rows.filter((r) => {
-      if (q && !(`${r.serialNo} ${r.centerName}`.toLowerCase().includes(q))) return false
-      if (type !== ALL && r.type !== type) return false
-      if (capacity !== ALL && r.capacity !== capacity) return false
-      if (entity !== ALL && r.entity !== entity) return false
-      if (region !== ALL && r.region !== region) return false
-      if (defect !== ALL && r.defectType !== defect) return false
-      return true
-    })
-  }, [rows, search, type, capacity, entity, region, defect])
-
-  const clearFilters = () => {
-    setSearch(''); setType(ALL); setCapacity(ALL); setEntity(ALL); setRegion(ALL); setDefect(ALL)
-  }
-  const filtersActive = search || [type, capacity, entity, region, defect].some((v) => v !== ALL)
+  const filtered = useMemo(() => applyListFilters(rows, filters), [rows, filters])
 
   const isClosed = mode === 'closed'
   const title = isClosed ? 'Physical Defects (Closed)' : 'Physical Defects (Open)'
@@ -79,38 +56,12 @@ export default function PhysicalDefectLog({ mode = 'open' }) {
       </PageHeader>
 
       {/* Filters (no dates) */}
-      <div className="card mb-4 flex flex-wrap items-center gap-3 p-4">
-        <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-ink-400">
-          <Filter size={13} /> Filters
-        </span>
-        <div className="relative min-w-[180px] flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-          <input className="input pl-9" placeholder="Search serial or center…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <select className="input w-auto" value={defect} onChange={(e) => setDefect(e.target.value)}>
-          <option value={ALL}>All defects</option>
-          {PHYSICAL_DEFECT_KEYS.map((k) => <option key={k} value={k}>{DEFECT_BY_KEY[k].label}</option>)}
-        </select>
-        <select className="input w-auto" value={type} onChange={(e) => setType(e.target.value)}>
-          <option value={ALL}>All types</option>
-          {TYPES.map((t) => <option key={t}>{t}</option>)}
-        </select>
-        <select className="input w-auto" value={capacity} onChange={(e) => setCapacity(e.target.value)}>
-          <option value={ALL}>All capacities</option>
-          {CAPACITIES.map((c) => <option key={c}>{c}</option>)}
-        </select>
-        <select className="input w-auto" value={entity} onChange={(e) => setEntity(e.target.value)}>
-          <option value={ALL}>All entities</option>
-          {ENTITIES.map((en) => <option key={en}>{en}</option>)}
-        </select>
-        <select className="input w-auto" value={region} onChange={(e) => setRegion(e.target.value)}>
-          <option value={ALL}>All regions</option>
-          {REGIONS.map((rg) => <option key={rg}>{rg}</option>)}
-        </select>
-        {filtersActive && (
-          <button className="btn-ghost" onClick={clearFilters}><X size={15} /> Clear</button>
-        )}
-      </div>
+      <ListFilters
+        filters={filters}
+        onChange={setFilters}
+        showDefect
+        searchPlaceholder="Search serial, center or type…"
+      />
 
       {filtered.length === 0 ? (
         <EmptyState

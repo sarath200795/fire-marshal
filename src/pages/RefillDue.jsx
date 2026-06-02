@@ -5,10 +5,12 @@ import { PageHeader, EmptyState } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
+import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markReceivedByVendor } from '../lib/firestore'
 import { hasQuotation } from '../lib/extinguisherLogic'
+import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 
 export default function RefillDue() {
@@ -18,11 +20,14 @@ export default function RefillDue() {
   const [reportFor, setReportFor] = useState(null)
   const [quoteFor, setQuoteFor] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [filters, setFilters] = useState(emptyFilters())
+
+  const visible = useMemo(() => applyListFilters(refillDue, filters), [refillDue, filters])
 
   const doExport = () => {
-    if (!refillDue.length) return toast.error('Nothing to export')
-    exportExtinguishers(refillDue, `to-be-refilled-${refillDue.length}.xlsx`, today)
-    toast.success(`Exported ${refillDue.length} rows`)
+    if (!visible.length) return toast.error('Nothing to export')
+    exportExtinguishers(visible, `to-be-refilled-${visible.length}.xlsx`, today)
+    toast.success(`Exported ${visible.length} rows`)
   }
 
   const receive = async (ext) => {
@@ -47,11 +52,15 @@ export default function RefillDue() {
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
       </PageHeader>
 
+      {refillDue.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
+
       {refillDue.length === 0 ? (
         <EmptyState icon={RefreshCw} title="Nothing due" hint="No extinguishers currently need refilling. 🎉" />
+      ) : visible.length === 0 ? (
+        <EmptyState icon={RefreshCw} title="No matches" hint="Try adjusting the filters above." />
       ) : (
         <ExtinguisherTable
-          items={refillDue}
+          items={visible}
           today={today}
           renderActions={(ext) => (
             <>

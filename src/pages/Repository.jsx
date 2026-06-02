@@ -1,41 +1,31 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Search, Download, Trash2, QrCode, AlertTriangle, Filter, X, Pencil, CheckCircle2, Truck, ChevronDown, FileText } from 'lucide-react'
+import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import EditExtinguisherModal from '../components/EditExtinguisherModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
+import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { usePaginatedList } from '../hooks/usePaginatedList'
 import { deriveStatus, isToBeRefilled, hasQuotation } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
-import {
-  bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects,
-  queryExtinguishersPage, PAGE_SIZE,
-} from '../lib/firestore'
-import { FILTER_ALL } from '../lib/extinguisherQuery'
-import { TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, STATUS_LABEL, CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
-
-const ALL = FILTER_ALL
+import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects } from '../lib/firestore'
+import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
+import { CATEGORY_LIST, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
 export default function Repository() {
-  const { org } = useFleet()
+  const { org, extinguishers, loading, capped, loadCap } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const navigate = useNavigate()
   const today = useMemo(() => new Date(), [])
 
-  // Server-side filters (drive the paginated query).
-  const [type, setType] = useState(ALL)
-  const [capacity, setCapacity] = useState(ALL)
-  const [entity, setEntity] = useState(ALL)
-  const [region, setRegion] = useState(ALL)
-  const [status, setStatus] = useState(ALL)
-  // Page-local filters (applied to loaded rows only).
-  const [search, setSearch] = useState('')
+  // All filtering is client-side over the in-memory fleet — no queries, no
+  // composite-index combinatorics, every matching row present at once.
+  const [filters, setFilters] = useState(emptyFilters())
   const [activeCats, setActiveCats] = useState(new Set())
 
   const [selected, setSelected] = useState(new Set())
@@ -46,39 +36,24 @@ export default function Repository() {
   const [deleting, setDeleting] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
-  // Paginated server query — refetches when any server filter changes.
-  const fetchPage = useCallback(
-    ({ cursor }) => queryExtinguishersPage(orgId, {
-      filters: { type, capacity, entity, region, status },
-      cursor,
-      pageSize: PAGE_SIZE,
-    }),
-    [orgId, type, capacity, entity, region, status]
-  )
-  const { rows, loading, loadingMore, hasMore, loadMore, reset, patchRows } = usePaginatedList(
-    fetchPage,
-    [orgId, type, capacity, entity, region, status]
-  )
-
-  // Page-local narrowing (search + condition chips) over the loaded rows.
+  // Attribute filters + search (shared bar) then condition-chip narrowing.
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return rows.filter((e) => {
-      if (q && !(`${e.serialNo} ${e.centerName} ${e.type}`.toLowerCase().includes(q))) return false
-      if (activeCats.size) {
+    let list = applyListFilters(extinguishers, filters)
+    if (activeCats.size) {
+      list = list.filter((e) => {
         const cats = new Set(deriveStatus(e, today).categories)
         for (const c of activeCats) if (!cats.has(c)) return false
-      }
-      return true
-    })
-  }, [rows, search, activeCats, today])
+        return true
+      })
+    }
+    return list
+  }, [extinguishers, filters, activeCats, today])
 
-  // ── Inline workflow actions (optimistically patch the loaded rows) ──
+  // ── Inline workflow actions (the realtime fleet listener refreshes rows) ──
   const sendToVendor = async (ext) => {
     setBusyId(ext.id)
     try {
       await markReceivedByVendor(orgId, orgName, ext.id, profile?.name)
-      patchRows((prev) => prev.map((r) => (r.id === ext.id ? { ...r, status: STATUS.IN_PROCESS_REFILLING } : r)))
       toast.success('Marked received by vendor — now In Process')
     } catch (e) {
       toast.error(e.message)
@@ -91,7 +66,6 @@ export default function Repository() {
     try {
       const remaining = (ext.physicalDefects || []).filter((k) => !PHYSICAL_DEFECT_KEYS.includes(k))
       await resolveDefects(orgId, orgName, ext.id, remaining, profile?.name)
-      patchRows((prev) => prev.map((r) => (r.id === ext.id ? { ...r, physicalDefects: remaining } : r)))
       toast.success('Physical defects resolved')
     } catch (e) {
       toast.error(e.message)
@@ -99,10 +73,6 @@ export default function Repository() {
       setBusyId(null)
     }
   }
-
-  // Patch the loaded row when a quotation is submitted so the action flips immediately.
-  const onQuoted = (ext, quotation) =>
-    patchRows((prev) => prev.map((r) => (r.id === ext.id ? { ...r, quotation } : r)))
 
   const toggleCat = (key) => setActiveCats((prev) => {
     const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
@@ -120,7 +90,7 @@ export default function Repository() {
     const list = selected.size ? selectedItems : visible
     if (!list.length) return toast.error('Nothing to export')
     exportExtinguishers(list, `extinguishers-${Date.now()}.xlsx`, today)
-    toast.success(`Exported ${list.length} loaded rows`)
+    toast.success(`Exported ${list.length} rows`)
   }
   const doPrint = () => {
     const ids = selected.size ? Array.from(selected) : visible.map((e) => e.id)
@@ -131,8 +101,6 @@ export default function Repository() {
     try {
       const items = selectedItems.map((e) => ({ id: e.id, qrToken: e.qrToken }))
       await bulkDeleteExtinguishers(orgId, items, { uid: profile?.uid, name: profile?.name })
-      const ids = new Set(items.map((i) => i.id))
-      patchRows((prev) => prev.filter((r) => !ids.has(r.id)))
       toast.success(`Deleted ${items.length} extinguishers`)
       setSelected(new Set())
       setConfirmDelete(false)
@@ -143,16 +111,11 @@ export default function Repository() {
     }
   }
 
-  const serverFiltersActive = type !== ALL || capacity !== ALL || entity !== ALL || region !== ALL || status !== ALL
-  const localFiltersActive = search || activeCats.size
-  const clearFilters = () => {
-    setType(ALL); setCapacity(ALL); setEntity(ALL); setRegion(ALL); setStatus(ALL)
-    setSearch(''); setActiveCats(new Set())
-  }
+  const filtersActive = hasActiveFilters(filters) || activeCats.size > 0
 
   const countLabel = loading
     ? 'Loading…'
-    : `${visible.length} loaded${hasMore ? '+' : ''}${localFiltersActive ? ` (of ${rows.length} fetched)` : ''}`
+    : `${visible.length}${filtersActive ? ` of ${extinguishers.length}` : ''} extinguisher${visible.length === 1 ? '' : 's'}${capped ? ` · showing most recent ${loadCap}` : ''}`
 
   return (
     <div>
@@ -161,39 +124,13 @@ export default function Repository() {
         <button className="btn-ghost" onClick={doPrint}><QrCode size={16} /> Print QR</button>
       </PageHeader>
 
-      {/* Filters */}
-      <div className="card mb-4 space-y-3 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[220px] flex-1">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-            <input className="input pl-9" placeholder="Search loaded rows…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <select className="input w-auto" value={type} onChange={(e) => setType(e.target.value)}>
-            <option value={ALL}>All types</option>
-            {TYPES.map((t) => <option key={t}>{t}</option>)}
-          </select>
-          <select className="input w-auto" value={capacity} onChange={(e) => setCapacity(e.target.value)}>
-            <option value={ALL}>All capacities</option>
-            {CAPACITIES.map((c) => <option key={c}>{c}</option>)}
-          </select>
-          <select className="input w-auto" value={entity} onChange={(e) => setEntity(e.target.value)}>
-            <option value={ALL}>All entities</option>
-            {ENTITIES.map((en) => <option key={en}>{en}</option>)}
-          </select>
-          <select className="input w-auto" value={region} onChange={(e) => setRegion(e.target.value)}>
-            <option value={ALL}>All regions</option>
-            {REGIONS.map((rg) => <option key={rg}>{rg}</option>)}
-          </select>
-          <select className="input w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value={ALL}>All statuses</option>
-            {Object.values(STATUS).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-          </select>
-          {(serverFiltersActive || localFiltersActive) && (
-            <button className="btn-ghost" onClick={clearFilters}><X size={15} /> Clear</button>
-          )}
-        </div>
-
-        {/* Color-coded condition chips (page-local) */}
+      {/* Filters (client-side; all matching rows shown at once) */}
+      <ListFilters
+        filters={filters}
+        onChange={setFilters}
+        showStatus
+        searchPlaceholder="Search serial, center or type…"
+      >
         <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
           <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-ink-400">
             <Filter size={13} /> Condition
@@ -213,14 +150,7 @@ export default function Repository() {
             )
           })}
         </div>
-
-        {localFiltersActive && (
-          <p className="text-xs text-ink-400">
-            Search &amp; condition filters apply to the <strong>loaded</strong> rows — use the dropdowns
-            for server-side filtering, or “Load more” to widen the set.
-          </p>
-        )}
-      </div>
+      </ListFilters>
 
       {/* Bulk action bar */}
       <AnimatePresence>
@@ -247,19 +177,21 @@ export default function Repository() {
       ) : visible.length === 0 ? (
         <EmptyState
           icon={Boxes}
-          title={rows.length ? 'No matches' : (serverFiltersActive ? 'No extinguishers match these filters' : 'No extinguishers yet')}
-          hint={rows.length ? 'Try adjusting search or condition filters.' : (serverFiltersActive ? 'Adjust the dropdown filters.' : 'Add one or bulk upload to get started.')}
+          title={extinguishers.length ? 'No matches' : 'No extinguishers yet'}
+          hint={extinguishers.length ? 'Try adjusting the filters above.' : 'Add one or bulk upload to get started.'}
+          action={filtersActive ? (
+            <button className="btn-ghost" onClick={() => { setFilters(emptyFilters()); setActiveCats(new Set()) }}>Clear filters</button>
+          ) : undefined}
         />
       ) : (
-        <>
-          <ExtinguisherTable
-            items={visible}
-            today={today}
-            selectable
-            selectedIds={selected}
-            onToggle={toggle}
-            onToggleAll={toggleAll}
-            showActionBy
+        <ExtinguisherTable
+          items={visible}
+          today={today}
+          selectable
+          selectedIds={selected}
+          onToggle={toggle}
+          onToggleAll={toggleAll}
+          showActionBy
             renderActions={(ext) => {
               const d = deriveStatus(ext, today)
               const canResolve = d.hasPhysicalDefect && !d.isClosed
@@ -306,19 +238,7 @@ export default function Repository() {
                 </>
               )
             }}
-          />
-
-          {hasMore && (
-            <div className="mt-4 flex justify-center">
-              <button className="btn-ghost" onClick={loadMore} disabled={loadingMore}>
-                {loadingMore ? <Spinner size={18} /> : (<><ChevronDown size={16} /> Load more</>)}
-              </button>
-            </div>
-          )}
-          {!hasMore && rows.length > PAGE_SIZE && (
-            <p className="mt-4 text-center text-xs text-ink-400">All {rows.length} matching extinguishers loaded.</p>
-          )}
-        </>
+        />
       )}
 
       <ReportDefectModal
@@ -332,7 +252,7 @@ export default function Repository() {
 
       <EditExtinguisherModal
         open={!!editFor}
-        onClose={() => { setEditFor(null); reset() }}
+        onClose={() => setEditFor(null)}
         ext={editFor}
         orgId={orgId}
         orgName={org?.name || orgName}
@@ -346,7 +266,6 @@ export default function Repository() {
         orgId={orgId}
         orgName={org?.name || orgName}
         actor={{ uid: profile?.uid, name: profile?.name }}
-        onSubmitted={(q) => quoteFor && onQuoted(quoteFor, q)}
       />
 
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete extinguishers?">

@@ -3,9 +3,11 @@ import { Truck, CheckCircle2, QrCode, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
+import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markRefilledAndClosed } from '../lib/firestore'
+import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 
 export default function InProcess() {
@@ -15,11 +17,14 @@ export default function InProcess() {
   const [closing, setClosing] = useState(null) // ext being closed
   const [dates, setDates] = useState({ dateOfNextRefill: '', dateOfNextHPT: '' })
   const [busy, setBusy] = useState(false)
+  const [filters, setFilters] = useState(emptyFilters())
+
+  const visible = useMemo(() => applyListFilters(inProcess, filters), [inProcess, filters])
 
   const doExport = () => {
-    if (!inProcess.length) return toast.error('Nothing to export')
-    exportExtinguishers(inProcess, `in-process-${inProcess.length}.xlsx`, today)
-    toast.success(`Exported ${inProcess.length} rows`)
+    if (!visible.length) return toast.error('Nothing to export')
+    exportExtinguishers(visible, `in-process-${visible.length}.xlsx`, today)
+    toast.success(`Exported ${visible.length} rows`)
   }
 
   const openClose = (ext) => {
@@ -53,11 +58,15 @@ export default function InProcess() {
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
       </PageHeader>
 
+      {inProcess.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
+
       {inProcess.length === 0 ? (
         <EmptyState icon={Truck} title="None in process" hint="Mark a due extinguisher as received by vendor to start." />
+      ) : visible.length === 0 ? (
+        <EmptyState icon={Truck} title="No matches" hint="Try adjusting the filters above." />
       ) : (
         <ExtinguisherTable
-          items={inProcess}
+          items={visible}
           today={today}
           showActionBy
           renderActions={(ext) => (

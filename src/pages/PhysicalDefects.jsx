@@ -5,9 +5,11 @@ import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
+import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveDefects } from '../lib/firestore'
+import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
@@ -20,11 +22,14 @@ export default function PhysicalDefects() {
   const [quoteFor, setQuoteFor] = useState(null)
   const [resolving, setResolving] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [filters, setFilters] = useState(emptyFilters())
+
+  const visible = useMemo(() => applyListFilters(physicalDefects, filters), [physicalDefects, filters])
 
   const doExport = () => {
-    if (!physicalDefects.length) return toast.error('Nothing to export')
-    exportExtinguishers(physicalDefects, `physical-defects-${physicalDefects.length}.xlsx`, today)
-    toast.success(`Exported ${physicalDefects.length} rows`)
+    if (!visible.length) return toast.error('Nothing to export')
+    exportExtinguishers(visible, `physical-defects-${visible.length}.xlsx`, today)
+    toast.success(`Exported ${visible.length} rows`)
   }
 
   const physical = (ext) => deriveStatus(ext, today).physicalDefects
@@ -54,11 +59,15 @@ export default function PhysicalDefects() {
         <button className="btn-ghost" onClick={doExport}><Download size={16} /> Export</button>
       </PageHeader>
 
+      {physicalDefects.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
+
       {physicalDefects.length === 0 ? (
         <EmptyState icon={Wrench} title="No physical defects" hint="All units are physically intact. 🛠️" />
+      ) : visible.length === 0 ? (
+        <EmptyState icon={Wrench} title="No matches" hint="Try adjusting the filters above." />
       ) : (
         <ExtinguisherTable
-          items={physicalDefects}
+          items={visible}
           today={today}
           renderActions={(ext) => (
             <>
