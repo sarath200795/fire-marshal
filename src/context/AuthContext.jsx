@@ -66,21 +66,19 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Sign up to join an existing org (pending admin approval).
-  const signUpMember = async ({ orgName, name, email, password }) => {
+  // Sign up to join an existing org (pending admin approval). The org is now
+  // chosen from a dropdown, so we receive its id directly — no name lookup.
+  const signUpMember = async ({ orgId, orgName, name, email, password }) => {
+    if (!orgId) throw new Error('Please select your organization.')
     const cred = await createUserWithEmailAndPassword(auth, email, password)
     try {
-      const org = await findOrgByName(orgName)
-      if (!org) {
-        throw new Error('No organization found with that name. Check the name or register a new org.')
-      }
       await updateProfile(cred.user, { displayName: name })
       await createPendingMember({
         uid: cred.user.uid,
         name,
         email,
-        orgId: org.id,
-        orgName: org.name,
+        orgId,
+        orgName: orgName || '',
       })
       await refreshProfile(cred.user.uid)
     } catch (err) {

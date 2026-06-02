@@ -161,6 +161,19 @@ export async function findOrgByName(orgName) {
   return { id: d.orgId, name: d.name }
 }
 
+/**
+ * List every organization (from the public orgIndex), as [{ id, name }] sorted
+ * by name. Used by the signup dropdown so members pick a real org instead of
+ * typing its name. Public-readable, so it works pre-auth.
+ */
+export async function listOrganizations() {
+  const snap = await getDocs(collection(db, 'orgIndex'))
+  return snap.docs
+    .map((d) => ({ id: d.data().orgId, name: d.data().name }))
+    .filter((o) => o.id && o.name)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 /** Create a pending member who is joining an existing org. */
 export async function createPendingMember({ uid, name, email, orgId, orgName }) {
   await setDoc(userRef(uid), {
