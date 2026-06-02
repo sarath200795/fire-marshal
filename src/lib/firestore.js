@@ -74,9 +74,15 @@ export function subscribeAuditLogs(orgId, cb) {
 // Maintained atomically inside each mutation batch so the dashboard's structural
 // totals are exact fleet-wide regardless of the 2,000 load cap.
 
-// Turn a sparse delta object (from statsDeltaFor) into increment() field updates,
-// flattened to dotted paths (e.g. "byStatus.active"). Adds them to an open batch.
-function applyStatsDelta(batch, orgId, delta) {
+// Apply a sparse delta object (from statsDeltaFor) to the stats counter doc as
+// increment() field updates, flattened to dotted paths (e.g. "byStatus.active").
+//
+// IMPORTANT: this is fire-and-forget and NON-BLOCKING — it runs in its own write,
+// AFTER the primary data batch has committed, and never throws. The dashboard
+// stats are a convenience overlay; a stats write failing (e.g. rules not yet
+// published for meta/stats) must never block or roll back the real extinguisher
+// write. (Same philosophy as logAudit.)
+async function bumpStats(orgId, delta) {
   if (!delta) return
   const fields = {}
   if (delta.total) fields.total = increment(delta.total)
@@ -89,8 +95,13 @@ function applyStatsDelta(batch, orgId, delta) {
   }
   if (Object.keys(fields).length === 0) return
   fields.updatedAt = serverTimestamp()
-  // set(merge) so the doc is created on first write and increments thereafter.
-  batch.set(statsRef(orgId), fields, { merge: true })
+  try {
+    // set(merge) so the doc is created on first write and increments thereafter.
+    await setDoc(statsRef(orgId), fields, { merge: true })
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[Fire Marshal] stats update skipped:', e?.message || e)
+  }
 }
 
 export function subscribeStats(orgId, cb) {
@@ -256,8 +267,8 @@ export async function addExtinguisher(orgId, orgName, data, actor) {
   const batch = writeBatch(db)
   batch.set(ref, ext)
   batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, ref.id, ext))
-  applyStatsDelta(batch, orgId, statsDeltaFor(null, ext))
   await batch.commit()
+  await bumpStats(orgId, statsDeltaFor(null, ext))
   await logAudit(orgId, actor, AUDIT.EXT_CREATE, {
     targetId: ref.id,
     targetLabel: extLabelOf(ext),
@@ -269,6 +280,7 @@ export async function addExtinguisher(orgId, orgName, data, actor) {
 /** Bulk add many extinguishers in chunked batches. Returns count written. */
 export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
   let written = 0
+  const allCreated = []
   // Firestore batches max 500 ops; each row = 2 writes, so chunk by 200 rows.
   for (let i = 0; i < rows.length; i += 200) {
     const chunk = rows.slice(i, i + 200)
@@ -297,12 +309,13 @@ export async function bulkAddExtinguishers(orgId, orgName, rows, actor) {
       batch.set(ref, ext)
       batch.set(qrRef(qrToken), mirrorPayload(orgId, orgName, ref.id, ext))
       created.push(ext)
+      allCreated.push(ext)
       written++
     }
-    // One stats write per batch (all creates = accumulate of the chunk).
-    applyStatsDelta(batch, orgId, accumulate(created))
     await batch.commit()
   }
+  // Stats update runs AFTER all data is safely committed, and never blocks it.
+  await bumpStats(orgId, accumulate(allCreated))
   await logAudit(orgId, actor, AUDIT.EXT_BULK_CREATE, {
     summary: `${written} extinguisher(s) added via bulk upload`,
   })
@@ -391,8 +404,9 @@ export async function bulkUpsertExtinguishers(orgId, orgName, { creates = [], up
   }
 
   // Updates can shift type/entity/region buckets (and creates add rows); a full
-  // recompute is the simplest correct way to reconcile both in one pass.
-  await recomputeStats(orgId)
+  // recompute is the simplest correct way to reconcile both in one pass. Stats
+  // are a convenience overlay — never let a stats write block the import.
+  await recomputeStats(orgId).catch((e) => console.warn('[Fire Marshal] stats recompute skipped:', e?.message || e))
   await logAudit(orgId, actor, AUDIT.EXT_BULK_UPSERT, {
     summary: `Bulk import: ${created} added, ${updated} updated`,
   })
@@ -414,8 +428,8 @@ export async function updateExtinguisher(orgId, orgName, id, updates, opts = {})
   if (merged.qrToken) {
     batch.set(qrRef(merged.qrToken), mirrorPayload(orgId, orgName, id, merged))
   }
-  applyStatsDelta(batch, orgId, statsDeltaFor(before, merged))
   await batch.commit()
+  await bumpStats(orgId, statsDeltaFor(before, merged))
   if (!opts.silent) {
     await logAudit(orgId, opts.actor, opts.action || AUDIT.EXT_UPDATE, {
       targetId: id,
@@ -437,7 +451,7 @@ export async function deleteExtinguisher(orgId, id, qrToken, actor, label) {
   })
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
-  await recomputeStats(orgId)
+  await recomputeStats(orgId).catch((e) => console.warn('[Fire Marshal] stats recompute skipped:', e?.message || e))
   await logAudit(orgId, actor, AUDIT.EXT_DELETE, { targetId: id, targetLabel: label || '' })
 }
 
@@ -455,7 +469,7 @@ export async function bulkDeleteExtinguishers(orgId, items, actor) {
     }
     await batch.commit()
   }
-  await recomputeStats(orgId)
+  await recomputeStats(orgId).catch((e) => console.warn('[Fire Marshal] stats recompute skipped:', e?.message || e))
   await logAudit(orgId, actor, AUDIT.EXT_BULK_DELETE, {
     summary: `${items.length} extinguisher(s) deleted`,
   })
@@ -471,9 +485,9 @@ export async function restoreExtinguisher(orgId, orgName, id, actor) {
   if (data.qrToken) {
     batch.set(qrRef(data.qrToken), mirrorPayload(orgId, orgName, id, { ...data, deletedAt: null }))
   }
-  // Restoring re-adds the unit to the active fleet (+1 to its buckets).
-  applyStatsDelta(batch, orgId, statsDeltaFor(null, { ...data, deletedAt: null }))
   await batch.commit()
+  // Restoring re-adds the unit to the active fleet (+1 to its buckets).
+  await bumpStats(orgId, statsDeltaFor(null, { ...data, deletedAt: null }))
   await logAudit(orgId, actor, AUDIT.EXT_RESTORE, { targetId: id, targetLabel: extLabelOf(data) })
 }
 
