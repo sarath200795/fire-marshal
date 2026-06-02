@@ -324,7 +324,7 @@ export default function Dashboard() {
         {/* By entity bar */}
         <ChartCard title="By Entity" subtitle="Click a bar to filter">
           <ResponsiveContainer width="100%" height={224}>
-            <BarChart data={entityData}>
+            <BarChart data={entityData} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
               <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} tick={{ fill: '#1c2230' }} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} width={28} tick={{ fill: '#62718c' }} />
               <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
