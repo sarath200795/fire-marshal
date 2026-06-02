@@ -41,6 +41,16 @@ describe('applyListFilters', () => {
     expect(applyListFilters(items, { ...emptyFilters(), status: 'active' })).toHaveLength(2)
   })
 
+  it('matches tolerantly across case / whitespace drift (real-world data)', () => {
+    const drifted = [
+      { serialNo: 'X1', region: 'north', capacity: '5 KG' },     // lowercase / uppercased unit
+      { serialNo: 'X2', region: 'North ', capacity: '5  Kg' },   // trailing space / double space
+    ]
+    // Dropdown sends canonical 'North' + '5 Kg' — both drifted rows still match.
+    const r = applyListFilters(drifted, { ...emptyFilters(), region: 'North', capacity: '5 Kg' })
+    expect(r).toHaveLength(2)
+  })
+
   it('defect matches defectType when present', () => {
     const log = [{ defectType: 'pin' }, { defectType: 'handle' }]
     expect(applyListFilters(log, { ...emptyFilters(), defect: 'pin' })).toHaveLength(1)

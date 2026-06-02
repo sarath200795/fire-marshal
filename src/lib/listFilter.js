@@ -23,22 +23,32 @@ export function hasActiveFilters(f = {}) {
 const matchesSearch = (item, q) =>
   `${item.serialNo || ''} ${item.centerName || ''} ${item.type || ''}`.toLowerCase().includes(q)
 
+// Normalize a value for tolerant equality: trim + collapse inner whitespace +
+// lowercase. This makes the dropdowns match stored values even when older or
+// bulk-imported records drifted in case/spacing (e.g. "north", "5 KG", "ABC ").
+const norm = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+
+// True when the stored field equals the selected filter value (tolerant), or
+// the filter is unset / FILTER_ALL.
+const eq = (filterVal, itemVal) =>
+  !filterVal || filterVal === FILTER_ALL || norm(itemVal) === norm(filterVal)
+
 /**
- * Filter a list of extinguisher-shaped rows by the given filters. Equality on
- * each set field (skipped when FILTER_ALL/blank); search over serial/center/type.
- * `status` and `defect` are only enforced when present in `filters`.
+ * Filter a list of extinguisher-shaped rows by the given filters. Tolerant
+ * equality on each set field (skipped when FILTER_ALL/blank); search over
+ * serial/center/type. `status` and `defect` are only enforced when present.
  * Pure + deterministic — unit-tested.
  */
 export function applyListFilters(items = [], filters = {}) {
   const q = (filters.search || '').trim().toLowerCase()
   return items.filter((item) => {
     if (q && !matchesSearch(item, q)) return false
-    if (filters.type && filters.type !== FILTER_ALL && item.type !== filters.type) return false
-    if (filters.capacity && filters.capacity !== FILTER_ALL && item.capacity !== filters.capacity) return false
-    if (filters.entity && filters.entity !== FILTER_ALL && item.entity !== filters.entity) return false
-    if (filters.region && filters.region !== FILTER_ALL && item.region !== filters.region) return false
-    if (filters.status && filters.status !== FILTER_ALL && item.status !== filters.status) return false
-    if (filters.defect && filters.defect !== FILTER_ALL && item.defectType !== filters.defect) return false
+    if (!eq(filters.type, item.type)) return false
+    if (!eq(filters.capacity, item.capacity)) return false
+    if (!eq(filters.entity, item.entity)) return false
+    if (!eq(filters.region, item.region)) return false
+    if (!eq(filters.status, item.status)) return false
+    if (!eq(filters.defect, item.defectType)) return false
     return true
   })
 }
