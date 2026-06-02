@@ -47,9 +47,13 @@ are validated against the allowed enums. Signup resolves an org by name via a pu
 `orgIndex/{nameLower}` doc (`{ orgId, name }`) so it never needs read access to the org collection.
 
 > **Publishing & migration:** rules take effect only once published
-> (`firebase deploy --only firestore:rules` or Console → Rules). **One-time backfill:** any organization
-> created *before* this change has no `orgIndex` doc, so name-based signup won't find it — add a doc at
-> `orgIndex/<lowercased org name> = { orgId, name }` for each existing org (Console or a script).
+> (`firebase deploy --only firestore:rules` or Console → Rules). **Make an existing org joinable:** the
+> signup page lists organizations from the public `orgIndex` collection. Any org created *before* this
+> existed has no entry, so it won't appear in the "Join your team" dropdown. To fix: **(1) publish the
+> rules** (above), then **(2)** sign in as that org's **admin → Team & Approvals → "List my
+> organization"** (or just open the app — it self-heals on load). The button shows a clear error if the
+> rules aren't published yet. Existing orgs can also be backfilled manually by adding
+> `orgIndex/<lowercased org name> = { orgId, name }` in the Console.
 
 ---
 

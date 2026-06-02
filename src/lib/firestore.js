@@ -194,6 +194,18 @@ export async function ensureOrgIndex(org) {
   }
 }
 
+/**
+ * Explicit, admin-triggered version of the orgIndex backfill. Unlike
+ * ensureOrgIndex this does NOT swallow errors — so the UI can show a clear
+ * permission/error toast (e.g. when the live rules haven't been published).
+ * Writes (creates/overwrites) the public orgIndex entry so the org appears in
+ * the signup "Join your team" dropdown.
+ */
+export async function registerOrgInIndex(orgId, orgName) {
+  if (!orgId || !orgName) throw new Error('Organization details are missing.')
+  await setDoc(orgIndexRef(orgName), { orgId, name: orgName })
+}
+
 /** Create a pending member who is joining an existing org. */
 export async function createPendingMember({ uid, name, email, orgId, orgName }) {
   await setDoc(userRef(uid), {

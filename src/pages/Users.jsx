@@ -1,10 +1,11 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users as UsersIcon, Check, X, ShieldCheck, Clock, UserCog } from 'lucide-react'
+import { Users as UsersIcon, Check, X, ShieldCheck, Clock, UserCog, Globe } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { PageHeader, Badge, EmptyState } from '../components/ui'
+import { PageHeader, Badge, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
-import { setUserStatus, setUserRole } from '../lib/firestore'
+import { setUserStatus, setUserRole, registerOrgInIndex } from '../lib/firestore'
 
 const STATUS_META = {
   approved: { color: '#16a34a', label: 'Approved' },
@@ -13,12 +14,32 @@ const STATUS_META = {
 }
 
 export default function Users() {
-  const { users } = useFleet()
-  const { user: me, orgId, profile } = useAuth()
+  const { users, org } = useFleet()
+  const { user: me, orgId, orgName, profile, isAdmin } = useAuth()
   const actor = { uid: profile?.uid, name: profile?.name }
+  const [listing, setListing] = useState(false)
 
   const pending = users.filter((u) => u.status === 'pending')
   const others = users.filter((u) => u.status !== 'pending')
+
+  const displayOrgName = org?.name || orgName
+
+  const makeJoinable = async () => {
+    if (!orgId || !displayOrgName) return toast.error('Organization details unavailable')
+    setListing(true)
+    try {
+      await registerOrgInIndex(orgId, displayOrgName)
+      toast.success('Your organization is now listed — new members can find it when joining.')
+    } catch (e) {
+      toast.error(
+        /permission/i.test(e?.message || '')
+          ? 'Permission denied — the Firestore rules need to be published. See setup notes.'
+          : (e?.message || 'Could not list the organization'),
+      )
+    } finally {
+      setListing(false)
+    }
+  }
 
   const act = async (fn, msg) => {
     try {
@@ -150,6 +171,28 @@ export default function Users() {
           </tbody>
         </table>
       </div>
+
+      {/* Org directory listing (admin) — makes this org selectable on the public
+          signup "Join your team" dropdown. */}
+      {isAdmin && (
+        <div className="card mt-8 flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-clay-surface text-brand-600 shadow-clay-inset">
+              <Globe size={18} />
+            </div>
+            <div>
+              <p className="font-bold text-ink-900">Make organization joinable</p>
+              <p className="text-sm text-ink-500">
+                List <span className="font-semibold">{displayOrgName || 'your organization'}</span> in the
+                public join directory so new members can select it when signing up.
+              </p>
+            </div>
+          </div>
+          <button className="btn-primary shrink-0" onClick={makeJoinable} disabled={listing}>
+            {listing ? <Spinner size={18} /> : (<><Globe size={16} /> List my organization</>)}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
