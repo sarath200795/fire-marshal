@@ -7,6 +7,7 @@ import {
   subscribeOrg,
   subscribeStats,
   backfillDeletedAt,
+  ensureOrgIndex,
 } from '../lib/firestore'
 import {
   fleetSummary,
@@ -36,6 +37,8 @@ export function FleetProvider({ children }) {
   const [loading, setLoading] = useState(true)
   // Run the deletedAt backfill at most once per org per session.
   const backfilledRef = useRef(null)
+  // Self-heal the public orgIndex entry at most once per org per session.
+  const orgIndexedRef = useRef(null)
 
   useEffect(() => {
     if (!orgId) return
@@ -63,7 +66,15 @@ export function FleetProvider({ children }) {
     })
     const u2 = subscribeReports(orgId, setReports)
     const u3 = subscribeOrgUsers(orgId, setUsers)
-    const u4 = subscribeOrg(orgId, setOrg)
+    const u4 = subscribeOrg(orgId, (o) => {
+      setOrg(o)
+      // Backfill the public orgIndex entry for orgs created before that feature,
+      // so they appear in the signup dropdown. Once per org per session.
+      if (o && o.name && orgIndexedRef.current !== orgId) {
+        orgIndexedRef.current = orgId
+        ensureOrgIndex({ id: o.id || orgId, name: o.name })
+      }
+    })
     const u5 = subscribeStats(orgId, setStats)
     return () => {
       u1()

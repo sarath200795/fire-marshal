@@ -174,6 +174,26 @@ export async function listOrganizations() {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/**
+ * Backfill the public orgIndex entry for an org if it's missing. Orgs created
+ * before the orgIndex feature have no index doc, so they don't appear in the
+ * signup dropdown. A signed-in member of the org self-heals it on load.
+ * Idempotent + non-blocking: skips when the doc already exists, swallows errors
+ * (the index is a convenience for signup, never critical to the app).
+ */
+export async function ensureOrgIndex(org) {
+  if (!org?.id || !org?.name) return
+  try {
+    const ref = orgIndexRef(org.name)
+    const snap = await getDoc(ref)
+    if (snap.exists()) return
+    await setDoc(ref, { orgId: org.id, name: org.name })
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[Fire Marshal] orgIndex backfill skipped:', e?.message || e)
+  }
+}
+
 /** Create a pending member who is joining an existing org. */
 export async function createPendingMember({ uid, name, email, orgId, orgName }) {
   await setDoc(userRef(uid), {
