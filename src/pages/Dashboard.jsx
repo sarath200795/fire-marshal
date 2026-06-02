@@ -390,7 +390,7 @@ export default function Dashboard() {
               <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
               <Bar dataKey="value" radius={[8, 8, 0, 0]} onClick={(d) => toggle('entity', d.name)} className="cursor-pointer">
                 {entityData.map((d) => <Cell key={d.name} fill={d.color} fillOpacity={segOpacity(filters.entity, d.name)} />)}
-                <LabelList dataKey="value" position="insideTop" fontSize={13} fontWeight={800} fill="#fff" />
+                <LabelList dataKey="value" position="top" fontSize={13} fontWeight={800} fill="#1c2230" />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -422,7 +422,7 @@ export default function Dashboard() {
                 <Tooltip cursor={{ fill: 'rgba(227,204,191,0.35)' }} />
                 <Bar dataKey="value" radius={[0, 8, 8, 0]} onClick={(d) => toggle('category', d.key)} className="cursor-pointer">
                   {categoryData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={segOpacity(filters.category, d.key)} />)}
-                  <LabelList dataKey="value" position="insideRight" fontSize={13} fontWeight={800} fill="#fff" />
+                  <LabelList dataKey="value" position="right" fontSize={13} fontWeight={800} fill="#1c2230" />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
