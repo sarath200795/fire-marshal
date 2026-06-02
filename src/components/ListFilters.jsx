@@ -1,25 +1,28 @@
 import { Search, Filter, X } from 'lucide-react'
 import { TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, STATUS_LABEL, PHYSICAL_DEFECT_KEYS, DEFECT_BY_KEY } from '../lib/constants'
-import { FILTER_ALL, hasActiveFilters } from '../lib/listFilter'
+import { emptyFilters, hasActiveFilters } from '../lib/listFilter'
 
-const OPTIONS = {
-  type: { label: 'types', values: TYPES },
-  capacity: { label: 'capacities', values: CAPACITIES },
-  entity: { label: 'entities', values: ENTITIES },
-  region: { label: 'regions', values: REGIONS },
+// field key → { label, options: [{ value, label }] }
+const FIELD_DEFS = {
+  type: { label: 'Type', options: TYPES.map((v) => ({ value: v, label: v })) },
+  capacity: { label: 'Capacity', options: CAPACITIES.map((v) => ({ value: v, label: v })) },
+  entity: { label: 'Entity', options: ENTITIES.map((v) => ({ value: v, label: v })) },
+  region: { label: 'Region', options: REGIONS.map((v) => ({ value: v, label: v })) },
+  status: { label: 'Status', options: Object.values(STATUS).map((s) => ({ value: s, label: STATUS_LABEL[s] })) },
+  defect: { label: 'Defect', options: PHYSICAL_DEFECT_KEYS.map((k) => ({ value: k, label: DEFECT_BY_KEY[k].label })) },
 }
 
 /**
- * Reusable client-side filter bar for extinguisher list pages.
+ * Reusable client-side filter bar. Each attribute field is a row of toggle
+ * chips — selecting multiple in a field is OR; across fields is AND. Empty
+ * field = no constraint.
  *
  * Props:
- *  - filters: the current filter object (see lib/listFilter emptyFilters)
- *  - onChange(next): called with the updated filter object
- *  - fields: which attribute dropdowns to show (default type/capacity/entity/region)
- *  - showStatus: also render the lifecycle Status dropdown (Repository only)
- *  - showDefect: render a physical-defect dropdown (PhysicalDefectLog)
- *  - searchPlaceholder: input placeholder
- *  - children: extra controls (e.g. Repository's condition chips) on a 2nd row
+ *  - filters / onChange(next): the filter object (see lib/listFilter emptyFilters)
+ *  - fields: attribute fields to show (default type/capacity/entity/region)
+ *  - showStatus / showDefect: append those fields
+ *  - searchPlaceholder
+ *  - children: extra controls (e.g. Repository's condition chips)
  */
 export default function ListFilters({
   filters,
@@ -30,9 +33,18 @@ export default function ListFilters({
   searchPlaceholder = 'Search serial, center or type…',
   children,
 }) {
-  const set = (key) => (e) => onChange({ ...filters, [key]: e.target.value })
-  const clear = () =>
-    onChange({ ...filters, search: '', type: FILTER_ALL, capacity: FILTER_ALL, entity: FILTER_ALL, region: FILTER_ALL, status: FILTER_ALL, defect: FILTER_ALL })
+  const activeFields = [
+    ...(showDefect ? ['defect'] : []),
+    ...fields,
+    ...(showStatus ? ['status'] : []),
+  ]
+
+  const toggle = (key, value) => {
+    const cur = Array.isArray(filters[key]) ? filters[key] : []
+    const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value]
+    onChange({ ...filters, [key]: next })
+  }
+  const clear = () => onChange(emptyFilters())
 
   return (
     <div className="card mb-4 space-y-3 p-4">
@@ -46,35 +58,36 @@ export default function ListFilters({
             className="input pl-9"
             placeholder={searchPlaceholder}
             value={filters.search || ''}
-            onChange={set('search')}
+            onChange={(e) => onChange({ ...filters, search: e.target.value })}
           />
         </div>
-
-        {showDefect && (
-          <select className="input w-auto" value={filters.defect || FILTER_ALL} onChange={set('defect')}>
-            <option value={FILTER_ALL}>All defects</option>
-            {PHYSICAL_DEFECT_KEYS.map((k) => <option key={k} value={k}>{DEFECT_BY_KEY[k].label}</option>)}
-          </select>
-        )}
-
-        {fields.map((f) => (
-          <select key={f} className="input w-auto" value={filters[f] || FILTER_ALL} onChange={set(f)}>
-            <option value={FILTER_ALL}>All {OPTIONS[f].label}</option>
-            {OPTIONS[f].values.map((v) => <option key={v}>{v}</option>)}
-          </select>
-        ))}
-
-        {showStatus && (
-          <select className="input w-auto" value={filters.status || FILTER_ALL} onChange={set('status')}>
-            <option value={FILTER_ALL}>All statuses</option>
-            {Object.values(STATUS).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-          </select>
-        )}
-
         {hasActiveFilters(filters) && (
           <button className="btn-ghost" onClick={clear}><X size={15} /> Clear</button>
         )}
       </div>
+
+      {activeFields.map((key) => {
+        const def = FIELD_DEFS[key]
+        const selected = Array.isArray(filters[key]) ? filters[key] : []
+        return (
+          <div key={key} className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
+            <span className="w-16 shrink-0 text-xs font-bold uppercase tracking-wide text-ink-400">{def.label}</span>
+            {def.options.map((opt) => {
+              const on = selected.includes(opt.value)
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => toggle(key, opt.value)}
+                  className={`chip transition ${on ? 'bg-brand-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'}`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        )
+      })}
 
       {children}
     </div>
