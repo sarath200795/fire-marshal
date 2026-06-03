@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
@@ -24,4 +24,15 @@ if (!isFirebaseConfigured) {
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+
+// Use session persistence (sessionStorage): the login is dropped when the tab /
+// browser is closed, so reopening requires signing in again. A same-tab reload
+// keeps the session (sessionStorage survives reloads of the same tab).
+if (isFirebaseConfigured) {
+  setPersistence(auth, browserSessionPersistence).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.warn('[Fire Marshal] could not set session persistence:', e?.message || e)
+  })
+}
+
 export default app

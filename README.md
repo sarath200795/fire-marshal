@@ -39,6 +39,12 @@ Built with **React (JSX) + Vite**, **Cloud Firestore + Firebase Auth**, **Tailwi
   lists derive from it client-side). A banner appears when the cap is hit. Composite indexes are in
   `firestore.indexes.json` — deploy with `firebase deploy --only firestore:indexes`.
 
+### Sessions
+Login uses **session persistence** (sessionStorage): closing the tab/browser signs the user out, so
+reopening the app requires logging in again (a same-tab reload keeps the session). An **idle timer**
+also auto-signs-out after **15 minutes** of inactivity, showing a warning modal with a 1-minute
+countdown and **Stay signed in / Log out now** options. Tunable in [`src/lib/session.js`](src/lib/session.js).
+
 ### Security model (multi-tenant isolation)
 The rules enforce, server-side: org docs/users/extinguishers/reports/audit are readable only by
 **approved members of that org**; QR mirror writes are locked to the **owning org**; public QR defect

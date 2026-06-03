@@ -22,9 +22,13 @@ import {
   LogOut,
   Menu,
   X,
+  Clock,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
+import { Modal } from './ui'
+import { useIdleTimeout } from '../hooks/useIdleTimeout'
+import { IDLE_MS, WARN_MS, formatMMSS } from '../lib/session'
 
 function NavItem({ to, icon: Icon, label, badge, onClick }) {
   return (
@@ -69,6 +73,19 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const close = () => setMobileOpen(false)
+
+  const doLogout = async () => {
+    await signOut()
+    navigate('/login')
+  }
+
+  // Auto-logout after inactivity, with a warning countdown before it fires.
+  const { warning, remainingMs, stayActive } = useIdleTimeout({
+    idleMs: IDLE_MS,
+    warnMs: WARN_MS,
+    onIdle: doLogout,
+    enabled: true,
+  })
 
   const SidebarContent = (
     <div className="flex h-full flex-col gap-1 overflow-y-auto px-3 py-4">
@@ -128,10 +145,7 @@ export default function Layout() {
               <p className="truncate text-[11px] capitalize text-ink-400">{profile?.role}</p>
             </div>
             <button
-              onClick={async () => {
-                await signOut()
-                navigate('/login')
-              }}
+              onClick={doLogout}
               className="rounded-lg p-2 text-ink-400 hover:bg-white/10 hover:text-white"
               title="Sign out"
             >
@@ -197,6 +211,27 @@ export default function Layout() {
           ))}
         </footer>
       </div>
+
+      {/* Idle session warning — auto sign-out countdown */}
+      <Modal open={warning} onClose={() => {}} title="Still there?">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-clay-surface text-brand-600 shadow-clay-inset">
+            <Clock size={26} />
+          </div>
+          <p className="text-sm text-ink-600">
+            You've been inactive. For security you'll be signed out in
+          </p>
+          <p className="text-4xl font-black tabular-nums text-ink-900">{formatMMSS(remainingMs)}</p>
+          <div className="mt-2 flex w-full gap-2">
+            <button className="btn-ghost flex-1" onClick={doLogout}>
+              <LogOut size={16} /> Log out now
+            </button>
+            <button className="btn-primary flex-1" onClick={stayActive}>
+              Stay signed in
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
