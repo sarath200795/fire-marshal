@@ -4,11 +4,11 @@
 // bodies (src/pages/Legal.jsx) read from here so the prose stays generic.
 // ─────────────────────────────────────────────────────────────────────────────
 export const LEGAL = {
-  companyName: '[COMPANY NAME]',
+  companyName: 'WE EHS',
   productName: 'Fire Marshal',
-  contactEmail: '[CONTACT EMAIL]',
-  jurisdiction: '[JURISDICTION / GOVERNING LAW]',
-  effectiveDate: '[EFFECTIVE DATE]',
+  contactEmail: 'sarath200795@gmail.com',
+  jurisdiction: 'India',
+  effectiveDate: '5th June 2026',
   // Soft-delete auto-purge window — keep in sync with the Recycle Bin (30 days).
   retentionDays: 30,
 }
