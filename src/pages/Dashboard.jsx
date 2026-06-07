@@ -237,7 +237,7 @@ export default function Dashboard() {
               <p className="text-sm font-medium text-ink-500">{k.label}</p>
             </>
           )
-          const cls = 'card group relative block w-full overflow-hidden p-5 text-left transition hover:-translate-y-0.5 hover:shadow-glow'
+          const cls = 'card group relative block w-full overflow-hidden p-5 text-left transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-glow active:scale-[0.99]'
           return (
             <motion.div key={k.label} variants={card} custom={i} initial="hidden" animate="show">
               {k.to ? (
