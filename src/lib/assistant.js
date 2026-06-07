@@ -8,9 +8,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   deriveStatus, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed,
-  hasQuotation, needsQuotation,
+  hasQuotation, needsQuotation, severityLabel, toDate, daysUntil,
 } from './extinguisherLogic'
 import { DEFECT_BY_KEY, STATUS_LABEL } from './constants'
+import { AUDIT } from './audit'
 
 const pageOf = (pathname = '') => {
   if (pathname.includes('/repository')) return 'repository'
@@ -102,9 +103,9 @@ export function pageGuide(pathname) {
   return GUIDES[pageOf(pathname)] || GUIDES.dashboard
 }
 
-const COMMON_QS = ['Give me a summary', 'What needs attention?', 'How many extinguishers?']
+const COMMON_QS = ['Give me a summary', "Today's status", 'What needs attention?']
 const PAGE_QS = {
-  dashboard: ['What needs attention?', 'How many are due for refill?', 'Which region has the most defects?'],
+  dashboard: ["Today's status", 'What needs attention?', 'How many are due for refill?'],
   repository: ['How many extinguishers?', 'How many need a quotation?', 'What types do we have?'],
   'refill-due': ['How many are due for refill?', 'How many need a quotation?', 'What should I do first?'],
   'in-process': ['How many are in process?', 'How do I close a refill?'],
@@ -142,6 +143,104 @@ function tally(items, keyFn) {
 const hit = (text) => ({ text, matched: true })
 const miss = (text) => ({ text, matched: false })
 const nav = (text, to) => ({ text, matched: true, action: { type: 'navigate', to } })
+
+// ── Daily status from the audit log ──────────────────────────────────────────
+// "Today" = same calendar day as `now`. Audit `at` is a Firestore Timestamp.
+function isSameDay(d, ref) {
+  return d && ref && d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() && d.getDate() === ref.getDate()
+}
+
+/** Summarise today's activity (defects raised, refills, closures) from auditLogs. */
+function dailyStatus(auditLogs = [], now = new Date()) {
+  const todays = auditLogs.filter((l) => isSameDay(toDate(l.at), now))
+  const countOf = (...actions) => todays.filter((l) => actions.includes(l.action)).length
+  const defectsRaised = todays.filter((l) => l.action === AUDIT.REPORT_CREATE && /defect/i.test(l.summary || '')).length
+  const defectsApproved = todays.filter((l) => l.action === AUDIT.REPORT_APPROVE && /defect/i.test(l.summary || '')).length
+  const quotations = countOf(AUDIT.WF_QUOTATION_SUBMITTED)
+  const sentToVendor = countOf(AUDIT.WF_SENT_TO_VENDOR)
+  const refilledClosed = countOf(AUDIT.WF_REFILLED_CLOSED)
+  const defectsResolved = countOf(AUDIT.WF_RESOLVED_DEFECTS)
+  const added = countOf(AUDIT.EXT_CREATE, AUDIT.EXT_BULK_CREATE)
+  return { total: todays.length, defectsRaised, defectsApproved, quotations, sentToVendor, refilledClosed, defectsResolved, added }
+}
+
+// ── Cylinder + center lookups ─────────────────────────────────────────────────
+// Pull a serial-looking token (e.g. FE-0001 / FE0001 / "1234") out of a question.
+function extractSerial(qn, extinguishers = []) {
+  const serials = extinguishers.map((e) => (e.serialNo || '').toLowerCase()).filter(Boolean)
+  // exact stored serial appearing anywhere in the (normalised) question
+  for (const s of serials) if (s && qn.includes(s)) return s
+  // a token like fe 0001 / fe0001 → rejoin and match
+  const m = qn.match(/\b(fe[\s-]?\d{1,6}|\d{3,6})\b/)
+  if (m) {
+    const tok = m[1].replace(/\s|-/g, '')
+    const found = serials.find((s) => s.replace(/\s|-/g, '') === tok)
+    if (found) return found
+  }
+  return null
+}
+
+/** A human-readable, per-cylinder status line. */
+function cylinderStatus(e, now = new Date()) {
+  const d = deriveStatus(e, now)
+  const bits = [`${severityLabel(e, now)}`]
+  if (e.region || e.centerName) bits.push(`at ${[e.centerName, e.region].filter(Boolean).join(', ')}`)
+  bits.push(`type ${e.type || '—'}${e.capacity ? ` ${e.capacity}` : ''}`)
+  const refillDays = daysUntil(e.dateOfNextRefill, now)
+  const hptDays = daysUntil(e.dateOfNextHPT, now)
+  const dueBits = []
+  if (refillDays != null) dueBits.push(`next refill ${refillDays <= 0 ? `${Math.abs(refillDays)}d overdue` : `in ${refillDays}d`}`)
+  if (hptDays != null) dueBits.push(`next HPT ${hptDays <= 0 ? `${Math.abs(hptDays)}d overdue` : `in ${hptDays}d`}`)
+  if (d.physicalDefects.length) dueBits.push(`defects: ${d.physicalDefects.map((k) => DEFECT_BY_KEY[k]?.label || k).join(', ')}`)
+  if (needsQuotation(e, now)) dueBits.push('awaiting a quotation')
+  else if (hasQuotation(e)) dueBits.push('quotation submitted')
+  return `🧯 ${e.serialNo || 'Extinguisher'}: ${bits.join(' · ')}${dueBits.length ? `. ${dueBits.join('; ')}.` : '.'}`
+}
+
+const ed = (a, b) => { // Levenshtein distance for fuzzy center matching
+  const m = a.length, n = b.length
+  if (!m) return n; if (!n) return m
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)])
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+  return dp[m][n]
+}
+
+/** Rank centers by closeness to a typed name (substring first, then edit distance). */
+function rankCenters(query, centers) {
+  const q = norm(query)
+  if (!q) return []
+  return centers
+    .map((cn) => {
+      const n = norm(cn)
+      let score = 0
+      if (n === q) score = 100
+      else if (n.includes(q) || q.includes(n)) score = 60 - Math.abs(n.length - q.length)
+      else {
+        const dist = ed(q, n)
+        const close = Math.max(n.length, q.length)
+        if (dist <= Math.max(2, Math.floor(close * 0.4))) score = 40 - dist
+      }
+      return { center: cn, score }
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+}
+
+function centerSummary(centerName, extinguishers, now = new Date()) {
+  const rows = extinguishers.filter((e) => norm(e.centerName) === norm(centerName))
+  if (!rows.length) return `No extinguishers recorded at ${centerName}.`
+  const due = rows.filter((e) => isToBeRefilled(e, now)).length
+  const proc = rows.filter((e) => isInProcess(e)).length
+  const def = rows.filter((e) => isPhysicalDefect(e)).length
+  const healthy = rows.filter((e) => deriveStatus(e, now).isHealthy).length
+  const parts = [`${rows.length} extinguisher(s)`, `${healthy} healthy`]
+  if (due) parts.push(`${due} to be refilled`)
+  if (proc) parts.push(`${proc} in process`)
+  if (def) parts.push(`${def} with physical defects`)
+  return `${centerName}: ${parts.join(', ')}.`
+}
 
 // Concise fire-safety guidance, citing the UK HSE. Returns null when the topic
 // isn't recognised so the caller can defer to the AI fallback.
@@ -202,23 +301,64 @@ export function answer(question, ctx) {
   const awaitingQuote = ext.filter((e) => needsQuotation(e, today))
   const quoted = ext.filter((e) => hasQuotation(e))
 
+  const regions = Array.from(new Set(ext.map((e) => e.region).filter(Boolean)))
+  const centers = Array.from(new Set(ext.map((e) => e.centerName).filter(Boolean)))
+
+  // ── Cylinder lookup by serial (status of a specific extinguisher) ──
+  const serial = extractSerial(qn, ext)
+  if (serial) {
+    const e = ext.find((x) => (x.serialNo || '').toLowerCase() === serial)
+    if (e) return hit(cylinderStatus(e, today))
+  }
+  // Asked about a cylinder/serial but we couldn't resolve it.
+  if (/\b(cylinder|extinguisher|serial|fe[\s-]?\d)\b/.test(qn) && /\b(status|where|detail|about|info|condition)\b/.test(qn) && !serial) {
+    // only nudge if they seem to be naming one (has a number or "serial")
+    if (/\d/.test(qn) || qn.includes('serial')) {
+      return hit('I couldn’t find that serial number. Give me the exact serial (e.g. “status of FE-0001”) and I’ll pull up its condition, dates, defects and quotation.')
+    }
+  }
+
+  // ── Daily status (from the audit log) ──
+  if ((qn.includes('today') || qn.includes('daily') || qn.includes('day')) && /(status|defect|refill|chang|close|activit|happen|summary|report)/.test(qn)) {
+    const ds = dailyStatus(c.auditLogs || [], today)
+    if (!ds.total) return hit('No recorded activity today yet. Defects raised, quotations, refills and closures will show up here as they happen.')
+    const parts = []
+    if (ds.defectsRaised) parts.push(`${ds.defectsRaised} defect(s) reported`)
+    if (ds.defectsApproved) parts.push(`${ds.defectsApproved} defect(s) approved`)
+    if (ds.quotations) parts.push(`${ds.quotations} quotation(s) submitted`)
+    if (ds.sentToVendor) parts.push(`${ds.sentToVendor} sent to vendor`)
+    if (ds.refilledClosed) parts.push(`${ds.refilledClosed} refilled & closed`)
+    if (ds.defectsResolved) parts.push(`${ds.defectsResolved} defect(s) resolved`)
+    if (ds.added) parts.push(`${ds.added} extinguisher(s) added`)
+    return hit(`Today’s status (${ds.total} change(s)):\n${parts.length ? parts.map((p) => `• ${p}`).join('\n') : '• misc. edits only'}.`)
+  }
+
   // ── Navigation intent (add an extinguisher) ──
   if (/\b(add|create|new|register)\b/.test(qn) && qn.includes('extinguish'))
     return nav('Opening the Add Extinguisher form for you. 🧯', '/app/add')
   if (qn.includes('bulk') || (qn.includes('upload') && qn.includes('many')))
     return nav('Opening Bulk Upload — download the template, fill it, and import. 📥', '/app/bulk-upload')
 
-  // ── Region / center entity lookups ──
-  const regions = Array.from(new Set(ext.map((e) => e.region).filter(Boolean)))
-  const centers = Array.from(new Set(ext.map((e) => e.centerName).filter(Boolean)))
-  const regionHit = regions.find((r) => norm(r).length >= 2 && qn.includes(norm(r)))
-  const centerHit = centers.find((cn) => norm(cn).length >= 3 && qn.includes(norm(cn)))
-  if (centerHit) {
-    const rows = ext.filter((e) => norm(e.centerName) === norm(centerHit))
-    const due = rows.filter((e) => isToBeRefilled(e, today)).length
-    const def = rows.filter((e) => isPhysicalDefect(e)).length
-    return hit(`${centerHit}: ${rows.length} extinguisher(s)${due ? `, ${due} due for refill` : ''}${def ? `, ${def} with physical defects` : ''}.`)
+  // ── Center lookup by name (exact, then fuzzy with disambiguation) ──
+  const centerExact = centers.find((cn) => norm(cn).length >= 3 && qn.includes(norm(cn)))
+  const asksCenter = /\b(center|centre|site|location|facility|branch|at )\b/.test(qn) || qn.includes('cylinders in') || qn.includes('extinguishers in') || qn.includes('extinguishers at')
+  if (centerExact) {
+    return hit(centerSummary(centerExact, ext, today))
   }
+  if (asksCenter && centers.length) {
+    // strip leading keywords to isolate the typed name
+    const q = qn.replace(/.*\b(center|centre|site|location|facility|branch|in|at)\b/, '').trim() || qn
+    const ranked = rankCenters(q, centers)
+    if (ranked.length === 1 || (ranked[0] && ranked[0].score >= 60)) {
+      return hit(centerSummary(ranked[0].center, ext, today))
+    }
+    if (ranked.length > 1) {
+      return hit(`I found a few centers close to that. Which did you mean?\n${ranked.slice(0, 5).map((r) => `• ${r.center}`).join('\n')}\nAsk “extinguishers at <exact name>”.`)
+    }
+  }
+
+  // ── Region entity lookup ──
+  const regionHit = regions.find((r) => norm(r).length >= 2 && qn.includes(norm(r)))
   if (regionHit) {
     const rows = ext.filter((e) => norm(e.region) === norm(regionHit))
     const due = rows.filter((e) => isToBeRefilled(e, today)).length
@@ -318,7 +458,7 @@ export function answer(question, ctx) {
     {
       keywords: ['help', 'what can you', 'who are you', 'what do you do'],
       tokenKeywords: ['hi', 'hello', 'hey'],
-      run: () => 'Hi! I read your live fleet data. Ask me for a summary, what needs attention, refill-due / in-process / defect counts, quotations awaiting, pending approvals, a region or center breakdown — or general fire-safety guidance (e.g. “which extinguisher for an electrical fire?”).',
+      run: () => 'Hi! I read your live fleet data. Ask me for a summary, today’s status (from the activity log), what needs attention, refill-due / in-process / defect counts, the status of a specific cylinder by serial (e.g. “status of FE-0001”), or all extinguishers at a center by name — plus general fire-safety guidance (e.g. “which extinguisher for an electrical fire?”).',
     },
   ]
 
@@ -375,6 +515,8 @@ export function buildAIContext(ctx) {
     byRegion: byRegion.map(([region, count]) => ({ region, count })),
     byEntity: byEntity.map(([entity, count]) => ({ entity, count })),
     byStatus: byStatus.map(([status, count]) => ({ status, count })),
+    today: dailyStatus(c.auditLogs || [], today),
+    centers: Array.from(new Set(ext.map((e) => e.centerName).filter(Boolean))).slice(0, 50),
     fleetWideTotals: c.stats || null,
   }
 }

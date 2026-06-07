@@ -13,6 +13,8 @@
     "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.js\""
   },
   "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "date-fns": "^3.6.0",
     "firebase": "^10.12.2",
     "framer-motion": "^11.2.10",
@@ -24,6 +26,7 @@
     "react-router-dom": "^6.23.1",
     "react-to-print": "^2.15.1",
     "recharts": "^2.12.7",
+    "three": "^0.169.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

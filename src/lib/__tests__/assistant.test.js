@@ -68,6 +68,46 @@ describe('answer — navigation + guidance', () => {
   })
 })
 
+describe('cylinder + center + daily lookups', () => {
+  it('cylinder status by serial', () => {
+    const r = answer('status of FE-0001', ctx())
+    expect(r.matched).toBe(true)
+    expect(r.text).toMatch(/FE-0001/)
+    expect(r.text).toMatch(/Alpha|North/)
+  })
+  it('unknown serial nudges for the exact number', () => {
+    const r = answer('status of cylinder 9999', ctx())
+    expect(r.matched).toBe(true)
+    expect(r.text.toLowerCase()).toMatch(/serial/)
+  })
+  it('center summary by exact name', () => {
+    const r = answer('extinguishers at Alpha', ctx())
+    expect(r.matched).toBe(true)
+    expect(r.text).toMatch(/Alpha/)
+    expect(r.text).toMatch(/extinguisher/)
+  })
+  it('fuzzy center name offers close matches', () => {
+    const r = answer('extinguishers at Alfa', ctx())  // misspelled "Alpha"
+    expect(r.matched).toBe(true)
+    expect(r.text).toMatch(/Alpha/)
+  })
+  it("today's status reads the audit log", () => {
+    const now = new Date()
+    const logs = [
+      { at: now, action: 'workflow.refilledClosed', summary: 'Refilled & closed' },
+      { at: now, action: 'report.create', summary: 'Reported defect (empty)' },
+    ]
+    const r = answer("today's status", ctx({ auditLogs: logs }))
+    expect(r.matched).toBe(true)
+    expect(r.text.toLowerCase()).toMatch(/refilled|defect/)
+  })
+  it("today's status with no activity says so", () => {
+    const r = answer('daily status change', ctx({ auditLogs: [] }))
+    expect(r.matched).toBe(true)
+    expect(r.text.toLowerCase()).toMatch(/no recorded activity/)
+  })
+})
+
 describe('page helpers', () => {
   it('suggestedQuestions returns up to 5', () => {
     expect(suggestedQuestions('/app/repository').length).toBeLessThanOrEqual(5)

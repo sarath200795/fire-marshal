@@ -6,6 +6,7 @@ import {
   subscribeOrgUsers,
   subscribeOrg,
   subscribeStats,
+  subscribeAuditLogs,
   backfillDeletedAt,
   ensureOrgIndex,
 } from '../lib/firestore'
@@ -34,6 +35,7 @@ export function FleetProvider({ children }) {
   const [users, setUsers] = useState([])
   const [org, setOrg] = useState(null)
   const [stats, setStats] = useState(null)
+  const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(true)
   // Run the deletedAt backfill at most once per org per session.
   const backfilledRef = useRef(null)
@@ -76,12 +78,14 @@ export function FleetProvider({ children }) {
       }
     })
     const u5 = subscribeStats(orgId, setStats)
+    const u6 = subscribeAuditLogs(orgId, setAuditLogs)
     return () => {
       u1()
       u2()
       u3()
       u4()
       u5()
+      u6()
     }
   }, [orgId])
 
@@ -96,6 +100,7 @@ export function FleetProvider({ children }) {
       loading,
       org,
       stats,
+      auditLogs,
       extinguishers: active,
       deletedExtinguishers,
       // True when the live load hit the cap (full set may be larger).
@@ -113,7 +118,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, loading])
+  }, [extinguishers, reports, users, org, stats, auditLogs, loading])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }
