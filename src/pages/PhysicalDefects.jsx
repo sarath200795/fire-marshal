@@ -6,6 +6,7 @@ import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import ListFilters from '../components/ListFilters'
+import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveDefects } from '../lib/firestore'
@@ -15,7 +16,7 @@ import { deriveStatus, hasQuotation } from '../lib/extinguisherLogic'
 import { DEFECT_BY_KEY, PHYSICAL_DEFECT_KEYS } from '../lib/constants'
 
 export default function PhysicalDefects() {
-  const { physicalDefects } = useFleet()
+  const { physicalDefects, loading } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
@@ -61,7 +62,9 @@ export default function PhysicalDefects() {
 
       {physicalDefects.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
 
-      {physicalDefects.length === 0 ? (
+      {loading ? (
+        <TableSkeleton rows={5} cols={7} />
+      ) : physicalDefects.length === 0 ? (
         <EmptyState icon={Wrench} title="No physical defects" hint="All units are physically intact. 🛠️" />
       ) : visible.length === 0 ? (
         <EmptyState icon={Wrench} title="No matches" hint="Try adjusting the filters above." />

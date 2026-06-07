@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ListFilters from '../components/ListFilters'
+import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markRefilledAndClosed } from '../lib/firestore'
@@ -11,7 +12,7 @@ import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 
 export default function InProcess() {
-  const { inProcess } = useFleet()
+  const { inProcess, loading } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [closing, setClosing] = useState(null) // ext being closed
@@ -60,7 +61,9 @@ export default function InProcess() {
 
       {inProcess.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
 
-      {inProcess.length === 0 ? (
+      {loading ? (
+        <TableSkeleton rows={5} cols={7} />
+      ) : inProcess.length === 0 ? (
         <EmptyState icon={Truck} title="None in process" hint="Mark a due extinguisher as received by vendor to start." />
       ) : visible.length === 0 ? (
         <EmptyState icon={Truck} title="No matches" hint="Try adjusting the filters above." />

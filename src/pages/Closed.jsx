@@ -4,12 +4,13 @@ import toast from 'react-hot-toast'
 import { PageHeader, EmptyState } from '../components/ui'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ListFilters from '../components/ListFilters'
+import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 
 export default function Closed() {
-  const { closed } = useFleet()
+  const { closed, loading } = useFleet()
   const today = useMemo(() => new Date(), [])
   const [filters, setFilters] = useState(emptyFilters())
 
@@ -33,7 +34,9 @@ export default function Closed() {
 
       {closed.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
 
-      {closed.length === 0 ? (
+      {loading ? (
+        <TableSkeleton rows={5} cols={6} />
+      ) : closed.length === 0 ? (
         <EmptyState icon={CheckCircle2} title="No closed cycles yet" hint="Completed refills will be recorded here." />
       ) : visible.length === 0 ? (
         <EmptyState icon={CheckCircle2} title="No matches" hint="Try adjusting the filters above." />

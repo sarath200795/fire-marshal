@@ -27,6 +27,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
 import { Modal } from './ui'
+import Assistant from './Assistant'
 import { useIdleTimeout } from '../hooks/useIdleTimeout'
 import { IDLE_MS, WARN_MS, formatMMSS } from '../lib/session'
 
@@ -211,6 +212,9 @@ export default function Layout() {
           ))}
         </footer>
       </div>
+
+      {/* Sam — the fire-safety assistant (floating, on every authed page) */}
+      <Assistant />
 
       {/* Idle session warning — auto sign-out countdown */}
       <Modal open={warning} onClose={() => {}} title="Still there?">

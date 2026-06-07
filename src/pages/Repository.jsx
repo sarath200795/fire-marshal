@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
+import { TableSkeleton } from '../components/Skeleton'
 import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import EditExtinguisherModal from '../components/EditExtinguisherModal'
@@ -173,7 +174,7 @@ export default function Repository() {
       </AnimatePresence>
 
       {loading ? (
-        <div className="flex justify-center py-16"><Spinner size={28} className="text-brand-500" /></div>
+        <TableSkeleton rows={8} cols={8} />
       ) : visible.length === 0 ? (
         <EmptyState
           icon={Boxes}

@@ -9,6 +9,7 @@ import {
   LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search, AlertTriangle,
 } from 'lucide-react'
 import { PageHeader } from '../components/ui'
+import { KpiSkeleton, ChartSkeleton, FilterBarSkeleton } from '../components/Skeleton'
 import CountUp from '../components/CountUp'
 import { useFleet } from '../context/FleetContext'
 import {
@@ -81,7 +82,7 @@ function chipMeta(dim, value) {
 }
 
 export default function Dashboard() {
-  const { extinguishers, capped, loadCap } = useFleet()
+  const { extinguishers, capped, loadCap, loading } = useFleet()
   const today = useMemo(() => new Date(), [])
 
   const [filters, setFilters] = useState(emptyFilters)
@@ -164,6 +165,17 @@ export default function Dashboard() {
     { label: 'Physical Defects', value: physicalDefects.length, color: '#d97706', icon: Wrench, to: '/app/physical-open' },
     { label: 'Refilled & Closed', value: closed.length, color: '#0ea5e9', icon: CheckCircle2, to: '/app/closed' },
   ]
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" subtitle="Click any chart segment to filter. Selections stack across charts." icon={LayoutDashboard} />
+        <FilterBarSkeleton />
+        <KpiSkeleton />
+        <ChartSkeleton />
+      </div>
+    )
+  }
 
   return (
     <div>

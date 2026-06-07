@@ -6,6 +6,7 @@ import ExtinguisherTable from '../components/ExtinguisherTable'
 import ReportDefectModal from '../components/ReportDefectModal'
 import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import ListFilters from '../components/ListFilters'
+import { TableSkeleton } from '../components/Skeleton'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
 import { markReceivedByVendor } from '../lib/firestore'
@@ -14,7 +15,7 @@ import { emptyFilters, applyListFilters } from '../lib/listFilter'
 import { exportExtinguishers } from '../lib/exporter'
 
 export default function RefillDue() {
-  const { refillDue } = useFleet()
+  const { refillDue, loading } = useFleet()
   const { orgId, orgName, profile } = useAuth()
   const today = useMemo(() => new Date(), [])
   const [reportFor, setReportFor] = useState(null)
@@ -54,7 +55,9 @@ export default function RefillDue() {
 
       {refillDue.length > 0 && <ListFilters filters={filters} onChange={setFilters} />}
 
-      {refillDue.length === 0 ? (
+      {loading ? (
+        <TableSkeleton rows={6} cols={7} />
+      ) : refillDue.length === 0 ? (
         <EmptyState icon={RefreshCw} title="Nothing due" hint="No extinguishers currently need refilling. 🎉" />
       ) : visible.length === 0 ? (
         <EmptyState icon={RefreshCw} title="No matches" hint="Try adjusting the filters above." />
