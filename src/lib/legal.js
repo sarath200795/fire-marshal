@@ -8,7 +8,7 @@ export const LEGAL = {
   productName: 'Fire Marshal',
   contactEmail: 'sarath200795@gmail.com',
   jurisdiction: 'India',
-  effectiveDate: '5th June 2026',
+  effectiveDate: '9th June 2026',
   // Soft-delete auto-purge window — keep in sync with the Recycle Bin (30 days).
   retentionDays: 30,
 }
