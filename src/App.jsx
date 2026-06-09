@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import ProtectedRoute from './components/ProtectedRoute'
+import PublicOnlyRoute from './components/PublicOnlyRoute'
 import Layout from './components/Layout'
 import { FleetProvider } from './context/FleetContext'
 import { FullScreenLoader } from './components/ui'
@@ -49,9 +50,9 @@ export default function App() {
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/register-org" element={<RegisterOrg />} />
+          <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+          <Route path="/signup" element={<PublicOnlyRoute><Signup /></PublicOnlyRoute>} />
+          <Route path="/register-org" element={<PublicOnlyRoute><RegisterOrg /></PublicOnlyRoute>} />
           <Route path="/pending" element={<PendingApproval />} />
           <Route path="/qr/:token" element={<PublicQR />} />
           <Route path="/privacy" element={<Legal kind="privacy" />} />
