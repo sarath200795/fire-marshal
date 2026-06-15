@@ -7,6 +7,8 @@ import {
   subscribeOrg,
   subscribeStats,
   subscribeAuditLogs,
+  subscribeSignages,
+  subscribeMockDrills,
   backfillDeletedAt,
   ensureOrgIndex,
 } from '../lib/firestore'
@@ -36,6 +38,8 @@ export function FleetProvider({ children }) {
   const [org, setOrg] = useState(null)
   const [stats, setStats] = useState(null)
   const [auditLogs, setAuditLogs] = useState([])
+  const [signages, setSignages] = useState([])
+  const [mockDrills, setMockDrills] = useState([])
   const [loading, setLoading] = useState(true)
   // Run the deletedAt backfill at most once per org per session.
   const backfilledRef = useRef(null)
@@ -79,6 +83,8 @@ export function FleetProvider({ children }) {
     })
     const u5 = subscribeStats(orgId, setStats)
     const u6 = subscribeAuditLogs(orgId, setAuditLogs)
+    const u7 = subscribeSignages(orgId, setSignages)
+    const u8 = subscribeMockDrills(orgId, setMockDrills)
     return () => {
       u1()
       u2()
@@ -86,6 +92,8 @@ export function FleetProvider({ children }) {
       u4()
       u5()
       u6()
+      u7()
+      u8()
     }
   }, [orgId])
 
@@ -96,11 +104,25 @@ export function FleetProvider({ children }) {
     const deletedExtinguishers = extinguishers.filter((e) => isDeleted(e))
     const summary = fleetSummary(active, today)
     const defectLog = derivePhysicalDefectLog(reports, active)
+    // Distinct site names (centerName) seen anywhere — used to populate the
+    // site filters / datalists on the signage + mock-drill pages.
+    const sites = Array.from(
+      new Set(
+        [
+          ...active.map((e) => e.centerName),
+          ...signages.map((s) => s.centerName),
+          ...mockDrills.map((d) => d.centerName),
+        ].filter((c) => c && c.trim())
+      )
+    ).sort((a, b) => a.localeCompare(b))
     return {
       loading,
       org,
       stats,
       auditLogs,
+      signages,
+      mockDrills,
+      sites,
       extinguishers: active,
       deletedExtinguishers,
       // True when the live load hit the cap (full set may be larger).
@@ -118,7 +140,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, auditLogs, loading])
+  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, loading])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }

@@ -38,6 +38,13 @@ const userRef = (uid) => doc(db, 'users', uid)
 const qrRef = (token) => doc(db, 'qr', token)
 const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 const statsRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'stats')
+const signageCol = (orgId) => collection(db, 'organizations', orgId, 'signages')
+const signageRef = (orgId, id) => doc(db, 'organizations', orgId, 'signages', id)
+// Signage photos are stored in a SEPARATE doc (keyed by the signage id) so the
+// live signage list stays lightweight — the base64 image is fetched on demand.
+const signagePhotoRef = (orgId, id) => doc(db, 'organizations', orgId, 'signagePhotos', id)
+const drillCol = (orgId) => collection(db, 'organizations', orgId, 'mockDrills')
+const drillRef = (orgId, id) => doc(db, 'organizations', orgId, 'mockDrills', id)
 // Public, minimal name→org index so signup can look up an org by name WITHOUT
 // reading the (member-only) organizations collection.
 const orgIndexKey = (name) => (name || '').trim().toLowerCase()
@@ -762,4 +769,127 @@ export async function resolveDefects(orgId, orgName, id, remainingDefects = [], 
     quotation: null,
     ...actionStamp(actorName, 'Resolved defects'),
   }, { actor: { name: actorName }, action: AUDIT.WF_RESOLVED_DEFECTS, summary: 'Physical defects resolved' })
+}
+
+// ── Safety signage inventory (org-scoped, site-wise) ──────────────────────────
+// A lightweight inventory of fire/safety signage per centerName (site). No QR
+// mirror or stats — these are simple records read live and edited in place.
+
+export function subscribeSignages(orgId, cb) {
+  const q = query(signageCol(orgId), orderBy('createdAt', 'desc'))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    // Missing-field/order errors shouldn't crash the app before any data exists.
+    (err) => console.warn('[Fire Marshal] signage subscribe failed:', err?.message || err)
+  )
+}
+
+// Lightweight metadata stored on the list doc — never the photo blob itself.
+const cleanSignageMeta = (data) => ({
+  centerName: (data.centerName || '').trim(),
+  region: data.region || '',
+  type: data.type || 'Other',
+  floor: (data.floor || '').trim(),
+  location: (data.location || '').trim(),
+  condition: data.condition || 'OK',
+  quantity: Number(data.quantity) || 1,
+  lastChecked: data.lastChecked || '',
+  notes: (data.notes || '').trim(),
+})
+
+const isDataUrl = (v) => typeof v === 'string' && v.startsWith('data:')
+
+export async function addSignage(orgId, data, actor) {
+  const hasPhoto = isDataUrl(data.photoUrl)
+  const ref = await addDoc(signageCol(orgId), {
+    ...cleanSignageMeta(data),
+    hasPhoto,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+  // Photo (if any) goes in its own doc, fetched on demand — keeps the list light.
+  if (hasPhoto) {
+    await setDoc(signagePhotoRef(orgId, ref.id), { dataUrl: data.photoUrl, updatedAt: serverTimestamp() })
+  }
+  await logAudit(orgId, actor, 'signage.create', {
+    target: 'signage',
+    targetId: ref.id,
+    targetLabel: `${data.type} @ ${data.centerName}`,
+    summary: `${data.type} (${data.condition}) @ ${data.centerName}`,
+  })
+  return ref.id
+}
+
+/**
+ * Update a signage record. `updates.photoUrl` semantics:
+ *   - undefined        → leave the existing photo untouched
+ *   - '' (empty)       → remove the photo
+ *   - a data: URL      → replace with the new photo
+ */
+export async function updateSignage(orgId, id, updates, actor) {
+  const fields = { ...cleanSignageMeta(updates), updatedAt: serverTimestamp() }
+  if (updates.photoUrl !== undefined) {
+    if (isDataUrl(updates.photoUrl)) {
+      fields.hasPhoto = true
+      await setDoc(signagePhotoRef(orgId, id), { dataUrl: updates.photoUrl, updatedAt: serverTimestamp() })
+    } else {
+      fields.hasPhoto = false
+      await deleteDoc(signagePhotoRef(orgId, id)).catch(() => {})
+    }
+  }
+  await updateDoc(signageRef(orgId, id), fields)
+  await logAudit(orgId, actor, 'signage.update', {
+    target: 'signage',
+    targetId: id,
+    targetLabel: `${updates.type} @ ${updates.centerName}`,
+    summary: 'Signage updated',
+  })
+}
+
+export async function deleteSignage(orgId, id, actor, label) {
+  await deleteDoc(signageRef(orgId, id))
+  await deleteDoc(signagePhotoRef(orgId, id)).catch(() => {})
+  await logAudit(orgId, actor, 'signage.delete', { target: 'signage', targetId: id, targetLabel: label || '' })
+}
+
+/** Fetch a signage photo on demand (returns a base64 data URL, or '' if none). */
+export async function getSignagePhoto(orgId, id) {
+  const snap = await getDoc(signagePhotoRef(orgId, id))
+  return snap.exists() ? snap.data().dataUrl || '' : ''
+}
+
+// ── Mock drills / emergency response records (org-scoped, site-wise) ───────────
+
+export function subscribeMockDrills(orgId, cb) {
+  const q = query(drillCol(orgId), orderBy('createdAt', 'desc'))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => console.warn('[Fire Marshal] mock drill subscribe failed:', err?.message || err)
+  )
+}
+
+/** Save a mock-drill / emergency record. `data` is the full sanitized form object. */
+export async function addMockDrill(orgId, data, actor) {
+  // Strip undefined values — Firestore rejects them.
+  const payload = JSON.parse(JSON.stringify({
+    ...data,
+    loggedBy: actor?.name || '',
+    createdAt: null, // placeholder; replaced by serverTimestamp below
+  }))
+  payload.createdAt = serverTimestamp()
+  const ref = await addDoc(drillCol(orgId), payload)
+  await logAudit(orgId, actor, 'mockdrill.create', {
+    target: 'mockdrill',
+    targetId: ref.id,
+    targetLabel: `${data.scenario} @ ${data.centerName || '—'}`,
+    summary: `${data.eventType}: ${data.scenario} (score ${data.score}%) @ ${data.centerName || '—'}`,
+  })
+  return ref.id
+}
+
+export async function deleteMockDrill(orgId, id, actor, label) {
+  await deleteDoc(drillRef(orgId, id))
+  await logAudit(orgId, actor, 'mockdrill.delete', { target: 'mockdrill', targetId: id, targetLabel: label || '' })
 }

@@ -19,6 +19,8 @@ const Legal = lazy(() => import('./pages/Legal'))
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Repository = lazy(() => import('./pages/Repository'))
+const Signages = lazy(() => import('./pages/Signages'))
+const MockDrills = lazy(() => import('./pages/MockDrills'))
 const AddExtinguisher = lazy(() => import('./pages/AddExtinguisher'))
 const BulkUpload = lazy(() => import('./pages/BulkUpload'))
 const QRPrint = lazy(() => import('./pages/QRPrint'))
@@ -64,6 +66,8 @@ export default function App() {
             <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="repository" element={<Repository />} />
+            <Route path="signages" element={<Signages />} />
+            <Route path="mock-drills" element={<MockDrills />} />
             <Route path="add" element={<AddExtinguisher />} />
             <Route path="bulk-upload" element={<BulkUpload />} />
             <Route path="qr-print" element={<QRPrint />} />

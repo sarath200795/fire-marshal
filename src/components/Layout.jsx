@@ -23,6 +23,8 @@ import {
   Menu,
   X,
   Clock,
+  Signpost,
+  Siren,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -112,6 +114,12 @@ export default function Layout() {
       <NavItem to="/app/add" icon={PlusCircle} label="Add Extinguisher" onClick={close} />
       <NavItem to="/app/bulk-upload" icon={Upload} label="Bulk Upload" onClick={close} />
       <NavItem to="/app/qr-print" icon={QrCode} label="Print QR Codes" onClick={close} />
+
+      <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
+        Site Safety
+      </p>
+      <NavItem to="/app/signages" icon={Signpost} label="Safety Signage" onClick={close} />
+      <NavItem to="/app/mock-drills" icon={Siren} label="Mock Drills" onClick={close} />
 
       <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
         Workflow

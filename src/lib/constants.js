@@ -94,6 +94,38 @@ export const REGION_COLORS = {
   West: '#a855f7',
 }
 
+// ── Safety signage (site-wise signage inventory) ─────────────────────────────
+export const SIGNAGE_TYPES = [
+  'Stretcher Signage',
+  'Fire Order Signage',
+  'Dug Out Emergency Contacts',
+  'FERP Signage',
+  'Lift Emergency Contacts',
+  'MCP Signage',
+  'FAS Panel Signage',
+  'Fire Exit',
+  'Assembly Point',
+  'Fire Extinguisher Sign',
+  'Fire Hose Reel Sign',
+  'No Smoking',
+  'Directional Arrow',
+  'First Aid',
+  'Other',
+]
+
+// Signage types where capturing the floor is meaningful (per-floor records).
+export const FLOOR_SIGNAGE_TYPES = ['FERP Signage']
+
+export const SIGNAGE_CONDITIONS = ['OK', 'Faded', 'Damaged', 'Missing', 'Obstructed']
+
+export const SIGNAGE_CONDITION_COLOR = {
+  OK: '#16a34a',
+  Faded: '#f59e0b',
+  Damaged: '#ea580c',
+  Missing: '#dc2626',
+  Obstructed: '#b45309',
+}
+
 // Columns used for xlsx bulk upload template + export
 export const BULK_COLUMNS = [
   'Serial No',
