@@ -102,18 +102,17 @@ service cloud.firestore {
         allow delete: if isApprovedMemberOf(orgId);
       }
 
-      // ── Signage photos ── one base64 image per signage, fetched on demand so
-      // the signage list stays lightweight. Same org-member access as signages.
-      match /signagePhotos/{sigId} {
-        allow read, write: if isApprovedMemberOf(orgId);
-      }
-
       // ── Mock drills / emergency response records ── site-wise drill reports.
       match /mockDrills/{drillId} {
         allow read: if isApprovedMemberOf(orgId);
         allow create, update: if isApprovedMemberOf(orgId)
           && request.resource.data.scenario is string;
         allow delete: if isApprovedMemberOf(orgId);
+
+        // Evidence photos (one base64 image per doc), fetched on demand.
+        match /photos/{photoId} {
+          allow read, write: if isApprovedMemberOf(orgId);
+        }
       }
     }
 

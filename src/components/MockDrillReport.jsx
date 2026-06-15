@@ -186,6 +186,18 @@ export default function MockDrillReport({ record }) {
         </tbody>
       </table>
 
+      {/* Evidence photos */}
+      {Array.isArray(r.photos) && r.photos.length > 0 && (
+        <div className="mb-6 page-break-inside-avoid">
+          <h2 className="mb-2 inline-block border border-gray-400 bg-gray-200 px-1 text-sm font-bold uppercase">6. Evidence Photos</h2>
+          <div className="flex flex-wrap gap-3">
+            {r.photos.map((src, i) => (
+              <img key={i} src={src} alt={`Evidence ${i + 1}`} className="rounded border border-gray-400 object-contain" style={{ height: '46mm', maxWidth: '31%' }} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Signatures */}
       <table className="mt-16 w-full text-sm">
         <tbody>

@@ -40,11 +40,11 @@ const auditCol = (orgId) => collection(db, 'organizations', orgId, 'auditLogs')
 const statsRef = (orgId) => doc(db, 'organizations', orgId, 'meta', 'stats')
 const signageCol = (orgId) => collection(db, 'organizations', orgId, 'signages')
 const signageRef = (orgId, id) => doc(db, 'organizations', orgId, 'signages', id)
-// Signage photos are stored in a SEPARATE doc (keyed by the signage id) so the
-// live signage list stays lightweight — the base64 image is fetched on demand.
-const signagePhotoRef = (orgId, id) => doc(db, 'organizations', orgId, 'signagePhotos', id)
 const drillCol = (orgId) => collection(db, 'organizations', orgId, 'mockDrills')
 const drillRef = (orgId, id) => doc(db, 'organizations', orgId, 'mockDrills', id)
+// Mock-drill evidence photos live in a per-drill subcollection (one doc each, ≤~700 KB)
+// so the live drill list never carries the image blobs.
+const drillPhotoCol = (orgId, drillId) => collection(db, 'organizations', orgId, 'mockDrills', drillId, 'photos')
 // Public, minimal name→org index so signup can look up an org by name WITHOUT
 // reading the (member-only) organizations collection.
 const orgIndexKey = (name) => (name || '').trim().toLowerCase()
@@ -785,8 +785,7 @@ export function subscribeSignages(orgId, cb) {
   )
 }
 
-// Lightweight metadata stored on the list doc — never the photo blob itself.
-const cleanSignageMeta = (data) => ({
+const cleanSignage = (data) => ({
   centerName: (data.centerName || '').trim(),
   region: data.region || '',
   type: data.type || 'Other',
@@ -796,22 +795,18 @@ const cleanSignageMeta = (data) => ({
   quantity: Number(data.quantity) || 1,
   lastChecked: data.lastChecked || '',
   notes: (data.notes || '').trim(),
+  // FERP floor coverage (only meaningful for FERP Signage).
+  totalFloors: Number(data.totalFloors) || 0,
+  allFloors: !!data.allFloors,
+  floorsCovered: Number(data.floorsCovered) || 0,
 })
 
-const isDataUrl = (v) => typeof v === 'string' && v.startsWith('data:')
-
 export async function addSignage(orgId, data, actor) {
-  const hasPhoto = isDataUrl(data.photoUrl)
   const ref = await addDoc(signageCol(orgId), {
-    ...cleanSignageMeta(data),
-    hasPhoto,
+    ...cleanSignage(data),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
-  // Photo (if any) goes in its own doc, fetched on demand — keeps the list light.
-  if (hasPhoto) {
-    await setDoc(signagePhotoRef(orgId, ref.id), { dataUrl: data.photoUrl, updatedAt: serverTimestamp() })
-  }
   await logAudit(orgId, actor, 'signage.create', {
     target: 'signage',
     targetId: ref.id,
@@ -821,24 +816,8 @@ export async function addSignage(orgId, data, actor) {
   return ref.id
 }
 
-/**
- * Update a signage record. `updates.photoUrl` semantics:
- *   - undefined        → leave the existing photo untouched
- *   - '' (empty)       → remove the photo
- *   - a data: URL      → replace with the new photo
- */
 export async function updateSignage(orgId, id, updates, actor) {
-  const fields = { ...cleanSignageMeta(updates), updatedAt: serverTimestamp() }
-  if (updates.photoUrl !== undefined) {
-    if (isDataUrl(updates.photoUrl)) {
-      fields.hasPhoto = true
-      await setDoc(signagePhotoRef(orgId, id), { dataUrl: updates.photoUrl, updatedAt: serverTimestamp() })
-    } else {
-      fields.hasPhoto = false
-      await deleteDoc(signagePhotoRef(orgId, id)).catch(() => {})
-    }
-  }
-  await updateDoc(signageRef(orgId, id), fields)
+  await updateDoc(signageRef(orgId, id), { ...cleanSignage(updates), updatedAt: serverTimestamp() })
   await logAudit(orgId, actor, 'signage.update', {
     target: 'signage',
     targetId: id,
@@ -849,14 +828,7 @@ export async function updateSignage(orgId, id, updates, actor) {
 
 export async function deleteSignage(orgId, id, actor, label) {
   await deleteDoc(signageRef(orgId, id))
-  await deleteDoc(signagePhotoRef(orgId, id)).catch(() => {})
   await logAudit(orgId, actor, 'signage.delete', { target: 'signage', targetId: id, targetLabel: label || '' })
-}
-
-/** Fetch a signage photo on demand (returns a base64 data URL, or '' if none). */
-export async function getSignagePhoto(orgId, id) {
-  const snap = await getDoc(signagePhotoRef(orgId, id))
-  return snap.exists() ? snap.data().dataUrl || '' : ''
 }
 
 // ── Mock drills / emergency response records (org-scoped, site-wise) ───────────
@@ -870,16 +842,27 @@ export function subscribeMockDrills(orgId, cb) {
   )
 }
 
-/** Save a mock-drill / emergency record. `data` is the full sanitized form object. */
+/**
+ * Save a mock-drill / emergency record. `data` is the full sanitized form object;
+ * `data.photos` (array of base64 data URLs) is split off into a subcollection so
+ * the main doc — and the live list — stay small.
+ */
 export async function addMockDrill(orgId, data, actor) {
+  const { photos = [], ...rest } = data
+  const valid = (Array.isArray(photos) ? photos : []).filter((p) => typeof p === 'string' && p.startsWith('data:'))
   // Strip undefined values — Firestore rejects them.
   const payload = JSON.parse(JSON.stringify({
-    ...data,
+    ...rest,
+    photoCount: valid.length,
     loggedBy: actor?.name || '',
     createdAt: null, // placeholder; replaced by serverTimestamp below
   }))
   payload.createdAt = serverTimestamp()
   const ref = await addDoc(drillCol(orgId), payload)
+  // Evidence photos, one doc each (fetched on demand when viewing / printing).
+  for (const dataUrl of valid) {
+    await addDoc(drillPhotoCol(orgId, ref.id), { dataUrl, createdAt: serverTimestamp() })
+  }
   await logAudit(orgId, actor, 'mockdrill.create', {
     target: 'mockdrill',
     targetId: ref.id,
@@ -889,7 +872,20 @@ export async function addMockDrill(orgId, data, actor) {
   return ref.id
 }
 
+/** Fetch a mock drill's evidence photos on demand. Returns [{ id, dataUrl }]. */
+export async function getMockDrillPhotos(orgId, drillId) {
+  const snap = await getDocs(drillPhotoCol(orgId, drillId))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
 export async function deleteMockDrill(orgId, id, actor, label) {
+  // Remove evidence photos first (non-fatal if it fails).
+  try {
+    const snap = await getDocs(drillPhotoCol(orgId, id))
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
+  } catch (e) {
+    console.warn('[Fire Marshal] drill photo cleanup skipped:', e?.message || e)
+  }
   await deleteDoc(drillRef(orgId, id))
   await logAudit(orgId, actor, 'mockdrill.delete', { target: 'mockdrill', targetId: id, targetLabel: label || '' })
 }

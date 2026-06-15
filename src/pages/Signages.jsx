@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Signpost, Plus, Pencil, Trash2, MapPin, ImagePlus, X, Image as ImageIcon } from 'lucide-react'
+import { Signpost, Plus, Pencil, Trash2, MapPin, X, LayoutGrid, List, Download, Check, Search, Filter } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addSignage, updateSignage, deleteSignage, getSignagePhoto } from '../lib/firestore'
-import { readFileAsDataUrl } from '../lib/fileToDataUrl'
+import { addSignage, updateSignage, deleteSignage } from '../lib/firestore'
+import { exportSignage } from '../lib/exporter'
 import {
   SIGNAGE_TYPES,
   SIGNAGE_CONDITIONS,
@@ -24,8 +24,20 @@ const EMPTY = {
   quantity: 1,
   lastChecked: '',
   notes: '',
-  photoUrl: '',
+  // FERP floor coverage
+  totalFloors: '',
+  allFloors: true,
+  floorsCovered: '',
 }
+
+const isFerp = (type) => FLOOR_SIGNAGE_TYPES.includes(type)
+// Floors that have FERP, given a record.
+const ferpCovered = (s) => (s.allFloors ? s.totalFloors || 0 : s.floorsCovered || 0)
+
+// Conditions that mean the signage exists but needs attention.
+const ISSUE_CONDITIONS = ['Faded', 'Damaged', 'Obstructed']
+
+const EMPTY_FILTERS = { search: '', regions: [], types: [], conditions: [] }
 
 function Field({ label, children }) {
   return (
@@ -36,23 +48,111 @@ function Field({ label, children }) {
   )
 }
 
+// One filter row of toggle chips (mirrors the Repository/Dashboard ListFilters style).
+function ChipRow({ label, options, selected, onToggle }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
+      <span className="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-ink-400">{label}</span>
+      {options.map((opt) => {
+        const on = selected.includes(opt)
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onToggle(opt)}
+            className={`chip transition ${on ? 'bg-brand-500 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'}`}
+          >
+            {opt}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Signages() {
   const { orgId, profile } = useAuth()
-  const { signages, sites, loading } = useFleet()
+  const { signages, sites, extinguishers, loading } = useFleet()
 
-  const [siteFilter, setSiteFilter] = useState('all')
+  const [view, setView] = useState('matrix') // 'matrix' | 'list'
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [editing, setEditing] = useState(null) // signage object or {…EMPTY}
   const [removing, setRemoving] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [photoView, setPhotoView] = useState(null) // {type, photoUrl} to enlarge
 
-  const filtered = useMemo(() => {
-    if (siteFilter === 'all') return signages
-    return signages.filter((s) => s.centerName === siteFilter)
-  }, [signages, siteFilter])
+  const f = filters
+  const anyActive = f.search || f.regions.length || f.types.length || f.conditions.length
+  const toggle = (field, value) =>
+    setFilters((prev) => {
+      const cur = prev[field]
+      return { ...prev, [field]: cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value] }
+    })
+  const clearFilters = () => setFilters(EMPTY_FILTERS)
 
-  // Group by site so the inventory reads "site-wise".
+  // Each site's region (from its extinguishers, then signage) — for the Region filter.
+  const siteRegion = useMemo(() => {
+    const m = {}
+    for (const e of extinguishers) if (e.centerName && e.region && !m[e.centerName]) m[e.centerName] = e.region
+    for (const s of signages) if (s.centerName && s.region && !m[s.centerName]) m[s.centerName] = s.region
+    return m
+  }, [extinguishers, signages])
+
+  // Which signage types are shown as matrix columns (all, unless the Type filter narrows them).
+  const visibleTypes = useMemo(
+    () => (f.types.length ? SIGNAGE_TYPES.filter((t) => f.types.includes(t)) : SIGNAGE_TYPES),
+    [f.types]
+  )
+
+  // Matrix rows: sites matching the Search + Region filters (kept even with no signage, so gaps show).
+  const visibleSites = useMemo(() => {
+    const q = f.search.trim().toLowerCase()
+    return sites.filter((site) => {
+      if (f.regions.length && !f.regions.includes(siteRegion[site])) return false
+      if (q) {
+        const siteHit = site.toLowerCase().includes(q)
+        const recHit = signages.some((s) => s.centerName === site && `${s.type} ${s.location}`.toLowerCase().includes(q))
+        if (!siteHit && !recHit) return false
+      }
+      return true
+    })
+  }, [sites, signages, f.regions, f.search, siteRegion])
+
+  // List records: every record matching all active filters.
+  const recordMatches = (s) => {
+    if (f.regions.length && !f.regions.includes(s.region)) return false
+    if (f.types.length && !f.types.includes(s.type)) return false
+    if (f.conditions.length && !f.conditions.includes(s.condition)) return false
+    if (f.search) {
+      const q = f.search.trim().toLowerCase()
+      if (!`${s.centerName} ${s.type} ${s.location}`.toLowerCase().includes(q)) return false
+    }
+    return true
+  }
+  const filtered = useMemo(() => signages.filter(recordMatches), [signages, filters])
+
+  // A matrix cell: records for (site, type) that pass the Region + Condition filters.
+  const cellFor = (site, type) => {
+    let recs = signages.filter((s) => s.centerName === site && s.type === type)
+    if (f.regions.length) recs = recs.filter((r) => f.regions.includes(r.region))
+    if (f.conditions.length) recs = recs.filter((r) => f.conditions.includes(r.condition))
+    if (recs.length === 0) return { count: 0, status: 'none' }
+    // FERP shows floor coverage (covered / total) rather than a plain count.
+    if (isFerp(type)) {
+      const rec = recs.reduce((a, b) => ((b.totalFloors || 0) > (a.totalFloors || 0) ? b : a), recs[0])
+      const total = rec.totalFloors || 0
+      const covered = ferpCovered(rec)
+      const missing = recs.some((r) => r.condition === 'Missing')
+      let status = 'ok'
+      if (missing || covered === 0) status = 'missing'
+      else if (total > 0 && covered < total) status = 'issue'
+      return { count: recs.length, status, label: total > 0 ? `${covered}/${total}` : '✓' }
+    }
+    if (recs.some((r) => r.condition === 'Missing')) return { count: recs.length, status: 'missing' }
+    if (recs.some((r) => ISSUE_CONDITIONS.includes(r.condition))) return { count: recs.length, status: 'issue' }
+    return { count: recs.length, status: 'ok' }
+  }
+
+  // Group filtered records by site for the list view.
   const grouped = useMemo(() => {
     const map = new Map()
     for (const s of filtered) {
@@ -64,63 +164,30 @@ export default function Signages() {
   }, [filtered])
 
   const set = (k) => (e) => setEditing({ ...editing, [k]: e.target.value })
-
-  const onPhoto = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // allow re-selecting the same file
-    if (!file) return
-    if (!file.type.startsWith('image/')) return toast.error('Please choose an image file')
-    setUploading(true)
-    try {
-      const dataUrl = await readFileAsDataUrl(file) // validates + caps at ~700 KB
-      setEditing((cur) => ({ ...cur, photoUrl: dataUrl, _photoDirty: true }))
-    } catch (err) {
-      toast.error(err.message)
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  // Open the edit modal; lazy-fetch the photo (it isn't carried in the list).
-  const openEdit = async (s) => {
-    setEditing({ ...s, photoUrl: '', _photoDirty: false, _photoLoading: !!s.hasPhoto })
-    if (s.hasPhoto) {
-      try {
-        const url = await getSignagePhoto(orgId, s.id)
-        setEditing((cur) => (cur && cur.id === s.id ? { ...cur, photoUrl: url, _photoLoading: false } : cur))
-      } catch {
-        setEditing((cur) => (cur && cur.id === s.id ? { ...cur, _photoLoading: false } : cur))
-      }
-    }
-  }
-
-  const removePhoto = () => setEditing((cur) => ({ ...cur, photoUrl: '', _photoDirty: true }))
-
-  // View a photo full-size; fetched on demand only when opened.
-  const viewPhoto = async (s) => {
-    if (!s.hasPhoto && !s.photoUrl) return
-    if (s.photoUrl) return setPhotoView({ ...s })
-    setPhotoView({ ...s, photoUrl: '', _loading: true })
-    try {
-      const url = await getSignagePhoto(orgId, s.id)
-      setPhotoView((cur) => (cur && cur.id === s.id ? { ...cur, photoUrl: url, _loading: false } : cur))
-    } catch {
-      setPhotoView((cur) => (cur && cur.id === s.id ? { ...cur, _loading: false } : cur))
-    }
-  }
+  const openAddFor = (centerName, type) => setEditing({ ...EMPTY, centerName: centerName || '', type })
 
   const save = async (e) => {
     e.preventDefault()
     if (!editing.centerName.trim()) return toast.error('Site (center name) is required')
+    const payload = { ...editing }
+    if (isFerp(payload.type)) {
+      const total = Number(payload.totalFloors) || 0
+      if (total < 1) return toast.error('Enter the number of floors for FERP')
+      payload.totalFloors = total
+      payload.floorsCovered = payload.allFloors ? total : Math.min(Number(payload.floorsCovered) || 0, total)
+    } else {
+      payload.totalFloors = 0
+      payload.allFloors = false
+      payload.floorsCovered = 0
+    }
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
       if (editing.id) {
-        // Only re-write the (large) photo doc when it actually changed.
-        await updateSignage(orgId, editing.id, { ...editing, photoUrl: editing._photoDirty ? editing.photoUrl : undefined }, actor)
+        await updateSignage(orgId, editing.id, payload, actor)
         toast.success('Signage updated')
       } else {
-        await addSignage(orgId, editing, actor)
+        await addSignage(orgId, payload, actor)
         toast.success('Signage added')
       }
       setEditing(null)
@@ -142,27 +209,151 @@ export default function Signages() {
     }
   }
 
+  // ── Export: a matrix sheet (counts) + a details sheet (every record) — both respect filters ──
+  const handleExport = () => {
+    const matrixRows = visibleSites.map((site) => {
+      const row = { Site: site, Region: siteRegion[site] || '' }
+      let covered = 0
+      for (const t of visibleTypes) {
+        const { count } = cellFor(site, t)
+        if (count > 0) covered++
+        row[t] = count
+      }
+      row.Coverage = `${covered}/${visibleTypes.length}`
+      return row
+    })
+    const detailRows = filtered
+      .slice()
+      .sort((a, b) => (a.centerName || '').localeCompare(b.centerName || '') || a.type.localeCompare(b.type))
+      .map((s) => ({
+        Site: s.centerName || '',
+        Region: s.region || '',
+        Type: s.type,
+        Floor: isFerp(s.type) ? (s.totalFloors ? `${ferpCovered(s)}/${s.totalFloors}` : '') : (s.floor || ''),
+        Location: s.location || '',
+        Condition: s.condition || '',
+        Quantity: s.quantity ?? '',
+        'Last Checked': s.lastChecked || '',
+        Notes: s.notes || '',
+      }))
+    if (matrixRows.length === 0) return toast.error('No sites to export')
+    exportSignage(matrixRows, detailRows, 'fire-marshal-safety-signage.xlsx')
+    toast.success('Exported to Excel')
+  }
+
+  const cellStyles = {
+    none: 'bg-clay-50 text-ink-300',
+    ok: 'bg-green-50 text-green-700',
+    issue: 'bg-amber-50 text-amber-700',
+    missing: 'bg-red-50 text-red-700',
+  }
+
   return (
     <div>
-      <PageHeader title="Safety Signage" subtitle="Site-wise inventory of fire & safety signage" icon={Signpost}>
-        <select className="input w-auto" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-          <option value="all">All sites</option>
-          {sites.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
-          <Plus size={16} /> Add signage
-        </button>
+      <PageHeader title="Safety Signage" subtitle="Site-wise availability of fire & safety signage" icon={Signpost}>
+        <div className="flex rounded-xl bg-clay-100 p-1">
+          <button onClick={() => setView('matrix')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'matrix' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><LayoutGrid size={14} /> Matrix</button>
+          <button onClick={() => setView('list')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'list' ? 'bg-white text-ink-900 shadow-clay-sm' : 'text-ink-500'}`}><List size={14} /> List</button>
+        </div>
+        <button className="btn-soft" onClick={handleExport} disabled={loading || sites.length === 0}><Download size={16} /> Export</button>
+        <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add signage</button>
       </PageHeader>
+
+      {/* Filters — same chip style as the Dashboard / Repository */}
+      {!loading && sites.length > 0 && (
+        <div className="card mb-4 space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-ink-400"><Filter size={13} /> Filters</span>
+            <div className="relative min-w-[200px] flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+              <input className="input pl-9" placeholder="Search site, type or location…" value={f.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+            </div>
+            {anyActive ? <button className="btn-ghost" onClick={clearFilters}><X size={15} /> Clear</button> : null}
+          </div>
+          <ChipRow label="Region" options={REGIONS} selected={f.regions} onToggle={(v) => toggle('regions', v)} />
+          <ChipRow label="Type" options={SIGNAGE_TYPES} selected={f.types} onToggle={(v) => toggle('types', v)} />
+          <ChipRow label="Condition" options={SIGNAGE_CONDITIONS} selected={f.conditions} onToggle={(v) => toggle('conditions', v)} />
+        </div>
+      )}
 
       {loading ? (
         <div className="grid place-items-center py-20"><Spinner size={28} /></div>
+      ) : sites.length === 0 ? (
+        <EmptyState
+          icon={Signpost}
+          title="No sites yet"
+          hint="Add a site's first extinguisher or signage record, then track signage availability here."
+          action={<button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add signage</button>}
+        />
+      ) : view === 'matrix' ? (
+        visibleSites.length === 0 ? (
+          <EmptyState icon={Filter} title="No sites match your filters" hint="Try clearing or widening the filters above." action={<button className="btn-ghost" onClick={clearFilters}><X size={15} /> Clear filters</button>} />
+        ) : (
+        <>
+          {/* Legend */}
+          <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-ink-500">
+            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-green-200" /> Available</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-amber-200" /> Needs attention</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-red-200" /> Missing</span>
+            <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-clay-200" /> Not recorded</span>
+            <span className="ml-auto text-ink-400">Tip: click a cell to add a record for that site & sign.</span>
+          </div>
+
+          <div className="card overflow-x-auto">
+            <table className="w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-10 border-b border-clay-200/60 bg-clay-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
+                  {visibleTypes.map((t) => (
+                    <th key={t} className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500" style={{ minWidth: 78 }}>
+                      {t}
+                    </th>
+                  ))}
+                  <th className="border-b border-clay-200/60 bg-clay-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 78 }}>Coverage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleSites.map((site) => {
+                  let covered = 0
+                  const cells = visibleTypes.map((t) => {
+                    const c = cellFor(site, t)
+                    if (c.count > 0) covered++
+                    return { t, ...c }
+                  })
+                  const pct = Math.round((covered / visibleTypes.length) * 100)
+                  return (
+                    <tr key={site} className="group">
+                      <td className="sticky left-0 z-10 border-b border-clay-200/40 bg-white px-4 py-2 font-semibold text-ink-800 group-hover:bg-clay-50">
+                        <span className="flex items-center gap-1.5"><MapPin size={13} className="text-brand-400" /> {site}</span>
+                      </td>
+                      {cells.map((c) => (
+                        <td key={c.t} className="border-b border-l border-clay-200/40 p-1 text-center">
+                          <button
+                            onClick={() => (c.count > 0 ? (setFilters({ ...EMPTY_FILTERS, search: site }), setView('list')) : openAddFor(site, c.t))}
+                            title={c.count > 0 ? `${c.count} record(s) — click to view` : 'Not recorded — click to add'}
+                            className={`flex h-9 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold transition hover:ring-2 hover:ring-brand-200 ${cellStyles[c.status]}`}
+                          >
+                            {c.status === 'none' ? '—' : c.label ? <span>{c.label}</span> : c.status === 'missing' ? <X size={14} /> : <Check size={14} />}
+                            {!c.label && c.count > 1 && <span>{c.count}</span>}
+                          </button>
+                        </td>
+                      ))}
+                      <td className="border-b border-l border-clay-200/40 px-3 py-2 text-center">
+                        <span className={`font-bold ${pct >= 80 ? 'text-green-700' : pct >= 40 ? 'text-amber-700' : 'text-red-700'}`}>{covered}/{visibleTypes.length}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+        )
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Signpost}
-          title="No signage recorded"
-          hint="Add fire exit, assembly point, extinguisher and other safety signs for each site."
+          title="No signage matches"
+          hint="Adjust the filters above, or add fire-safety signs for your sites."
           action={<button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add signage</button>}
         />
       ) : (
@@ -174,11 +365,10 @@ export default function Signages() {
                 <h3 className="text-sm font-extrabold text-ink-800">{site}</h3>
                 <span className="chip bg-ink-100 text-ink-500">{items.length}</span>
               </div>
-              <div className="card overflow-hidden">
+              <div className="card overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-clay-200/60 text-[11px] uppercase tracking-wide text-ink-400">
                     <tr>
-                      <th className="px-4 py-2.5">Photo</th>
                       <th className="px-4 py-2.5">Type</th>
                       <th className="px-4 py-2.5">Floor</th>
                       <th className="px-4 py-2.5">Location</th>
@@ -191,17 +381,8 @@ export default function Signages() {
                   <tbody className="divide-y divide-clay-200/50">
                     {items.map((s) => (
                       <tr key={s.id} className="hover:bg-clay-50">
-                        <td className="px-4 py-2.5">
-                          {(s.hasPhoto || s.photoUrl) ? (
-                            <button onClick={() => viewPhoto(s)} className="grid h-9 w-9 place-items-center rounded-md bg-brand-50 text-brand-600 transition hover:bg-brand-100" title="View photo">
-                              <ImageIcon size={15} />
-                            </button>
-                          ) : (
-                            <span className="grid h-9 w-9 place-items-center rounded-md bg-clay-100 text-ink-300"><ImageIcon size={14} /></span>
-                          )}
-                        </td>
                         <td className="px-4 py-2.5 font-semibold text-ink-800">{s.type}</td>
-                        <td className="px-4 py-2.5 text-ink-500">{s.floor || '—'}</td>
+                        <td className="px-4 py-2.5 text-ink-500">{isFerp(s.type) ? (s.totalFloors ? `${ferpCovered(s)}/${s.totalFloors} floors` : '—') : (s.floor || '—')}</td>
                         <td className="px-4 py-2.5 text-ink-500">{s.location || '—'}</td>
                         <td className="px-4 py-2.5 text-ink-600">{s.quantity}</td>
                         <td className="px-4 py-2.5">
@@ -210,7 +391,7 @@ export default function Signages() {
                         <td className="px-4 py-2.5 text-ink-500">{s.lastChecked || '—'}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex justify-end gap-1">
-                            <button className="btn-soft px-2 py-1.5" onClick={() => openEdit(s)} title="Edit"><Pencil size={15} /></button>
+                            <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(s)} title="Edit"><Pencil size={15} /></button>
                             <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(s)} title="Delete"><Trash2 size={15} /></button>
                           </div>
                         </td>
@@ -246,9 +427,15 @@ export default function Signages() {
                   {SIGNAGE_TYPES.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label={FLOOR_SIGNAGE_TYPES.includes(editing.type) ? 'Floor (one record per floor)' : 'Floor (optional)'}>
-                <input className="input" placeholder="e.g. Ground, 1, 2, Basement" value={editing.floor} onChange={set('floor')} />
-              </Field>
+              {isFerp(editing.type) ? (
+                <Field label="Number of floors">
+                  <input type="number" min={1} className="input" placeholder="e.g. 8" value={editing.totalFloors} onChange={set('totalFloors')} />
+                </Field>
+              ) : (
+                <Field label="Floor (optional)">
+                  <input className="input" placeholder="e.g. Ground, 1, 2, Basement" value={editing.floor} onChange={set('floor')} />
+                </Field>
+              )}
               <Field label="Condition">
                 <select className="input" value={editing.condition} onChange={set('condition')}>
                   {SIGNAGE_CONDITIONS.map((c) => <option key={c}>{c}</option>)}
@@ -264,32 +451,21 @@ export default function Signages() {
                 <input type="date" className="input" value={editing.lastChecked} onChange={set('lastChecked')} />
               </Field>
             </div>
-            <Field label="Photo of signage (optional, image ≤ 700 KB)">
-              {editing._photoLoading ? (
-                <div className="flex items-center gap-2 rounded-xl border border-dashed border-clay-300 px-4 py-3 text-sm text-ink-500">
-                  <Spinner size={16} /> Loading photo…
-                </div>
-              ) : editing.photoUrl ? (
-                <div className="flex items-center gap-3">
-                  <img src={editing.photoUrl} alt="Signage" className="h-20 w-20 rounded-lg border border-clay-200 object-cover" />
-                  <div className="flex flex-col gap-2">
-                    <label className="btn-soft cursor-pointer text-xs">
-                      <ImagePlus size={14} /> Replace
-                      <input type="file" accept="image/*" className="hidden" onChange={onPhoto} />
-                    </label>
-                    <button type="button" className="btn-ghost px-2 py-1 text-xs text-red-600" onClick={removePhoto}>
-                      <X size={14} /> Remove
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-clay-300 px-4 py-3 text-sm text-ink-500 hover:bg-clay-50">
-                  {uploading ? <Spinner size={16} /> : <ImagePlus size={16} />}
-                  {uploading ? 'Uploading…' : 'Upload a photo'}
-                  <input type="file" accept="image/*" className="hidden" onChange={onPhoto} disabled={uploading} />
+            {isFerp(editing.type) && (
+              <div className="rounded-xl bg-clay-surface/60 p-3 shadow-clay-inset">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink-700">
+                  <input type="checkbox" checked={!!editing.allFloors} onChange={(e) => setEditing({ ...editing, allFloors: e.target.checked })} />
+                  FERP available on all floors
                 </label>
-              )}
-            </Field>
+                {!editing.allFloors && (
+                  <div className="mt-2 max-w-[240px]">
+                    <label className="label">Floors with FERP available</label>
+                    <input type="number" min={0} max={editing.totalFloors || undefined} className="input" placeholder="e.g. 6" value={editing.floorsCovered} onChange={set('floorsCovered')} />
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-ink-400">A Fire Emergency Response Plan should be displayed on every floor.</p>
+              </div>
+            )}
             <Field label="Notes">
               <textarea className="input" rows={2} value={editing.notes} onChange={set('notes')} />
             </Field>
@@ -313,17 +489,6 @@ export default function Signages() {
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
-      </Modal>
-
-      {/* Photo viewer */}
-      <Modal open={!!photoView} onClose={() => setPhotoView(null)} title={photoView ? `${photoView.type}${photoView.floor ? ` · Floor ${photoView.floor}` : ''}` : ''} maxWidth="max-w-2xl">
-        {photoView?._loading ? (
-          <div className="grid place-items-center py-16"><Spinner size={28} /></div>
-        ) : photoView?.photoUrl ? (
-          <img src={photoView.photoUrl} alt={photoView.type} className="max-h-[70vh] w-full rounded-xl object-contain" />
-        ) : (
-          <p className="py-10 text-center text-sm text-ink-500">Photo could not be loaded.</p>
-        )}
       </Modal>
     </div>
   )

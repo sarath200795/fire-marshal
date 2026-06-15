@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useReactToPrint } from 'react-to-print'
 import {
-  Siren, Plus, Trash2, FileText, X, ShieldCheck, UserPlus, ListChecks,
+  Siren, Plus, Trash2, FileText, X, ShieldCheck, UserPlus, ListChecks, ImagePlus, Image as ImageIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addMockDrill, deleteMockDrill } from '../lib/firestore'
+import { addMockDrill, deleteMockDrill, getMockDrillPhotos } from '../lib/firestore'
+import { readFileAsDataUrl } from '../lib/fileToDataUrl'
 import MockDrillReport from '../components/MockDrillReport'
+
+const MAX_DRILL_PHOTOS = 8
 import {
   SCENARIOS, FIRE_SOURCE_OPTIONS, MEDICAL_INCIDENT_OPTIONS, EMERGENCY_TEAMS,
   getActiveChecklist, getScenario, DRILL_OUTCOMES, EVENT_TYPES, CAPA_STATUSES,
@@ -54,6 +57,13 @@ export default function MockDrills() {
   const [teamChecks, setTeamChecks] = useState({})
   const [actionLog, setActionLog] = useState([{ time: '', action: '', observation: '' }])
   const [capa, setCapa] = useState([])
+  const [photos, setPhotos] = useState([]) // recorder evidence photos: [{ id, dataUrl }]
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+
+  // detail-modal + full-size photo viewing
+  const [viewPhotos, setViewPhotos] = useState([])
+  const [viewPhotosLoading, setViewPhotosLoading] = useState(false)
+  const [enlarge, setEnlarge] = useState(null) // a data URL shown full-size
 
   const checklist = useMemo(
     () => (scenario ? getActiveChecklist(scenario.title, form.fireSource, form.medicalIncidentType) : []),
@@ -88,6 +98,7 @@ export default function MockDrills() {
     setCommanders([]); setCommanderPick(''); setCommanderManual('')
     setChecks({}); setTeamChecks({})
     setActionLog([{ time: '', action: '', observation: '' }]); setCapa([])
+    setPhotos([])
   }
   const closeRecorder = () => setScenario(null)
 
@@ -139,6 +150,7 @@ export default function MockDrills() {
         score,
         actionLog: actionLog.filter((l) => l.action && l.action.trim()),
         capa: capa.filter((c) => c.action && c.action.trim()),
+        photos: photos.map((p) => p.dataUrl),
       }
       await addMockDrill(orgId, record, { uid: profile?.uid, name: profile?.name })
       toast.success(`${form.eventType} report saved`)
@@ -155,6 +167,50 @@ export default function MockDrills() {
       await deleteMockDrill(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.scenario} @ ${removing.centerName}`)
       toast.success('Record deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+  }
+
+  // recorder evidence photos
+  const onDrillPhoto = async (e) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!files.length) return
+    setUploadingPhoto(true)
+    try {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) { toast.error('Only image files are allowed'); continue }
+        try {
+          const dataUrl = await readFileAsDataUrl(file) // validates + caps at ~700 KB
+          let added = true
+          setPhotos((p) => {
+            if (p.length >= MAX_DRILL_PHOTOS) { added = false; return p }
+            return [...p, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl }]
+          })
+          if (!added) { toast.error(`Up to ${MAX_DRILL_PHOTOS} photos per record`); break }
+        } catch (err) { toast.error(err.message) }
+      }
+    } finally { setUploadingPhoto(false) }
+  }
+  const removeDrillPhoto = (id) => setPhotos((p) => p.filter((x) => x.id !== id))
+
+  // open the detail modal, lazy-loading the drill's evidence photos
+  const openView = async (d) => {
+    setViewing(d); setViewPhotos([])
+    if (d.photoCount > 0) {
+      setViewPhotosLoading(true)
+      try { setViewPhotos(await getMockDrillPhotos(orgId, d.id)) }
+      catch { /* non-fatal */ }
+      finally { setViewPhotosLoading(false) }
+    }
+  }
+
+  // fetch photos (if any) then trigger the PDF print
+  const downloadPdf = async (d) => {
+    let photoUrls = []
+    if (d.photoCount > 0) {
+      try { photoUrls = (await getMockDrillPhotos(orgId, d.id)).map((p) => p.dataUrl) }
+      catch { /* non-fatal — print without photos */ }
+    }
+    setPrintRecord({ ...d, photos: photoUrls })
   }
 
   const scoreColor = (s) => (s >= 100 ? '#16a34a' : s >= 70 ? '#f59e0b' : '#dc2626')
@@ -214,8 +270,11 @@ export default function MockDrills() {
                     <Badge color={d.eventType === 'Real Emergency' ? '#dc2626' : '#3b82f6'}>{d.eventType || 'Mock Drill'}</Badge>
                   </td>
                   <td className="px-4 py-2.5">
-                    <button className="font-semibold text-ink-800 hover:text-brand-600" onClick={() => setViewing(d)}>
+                    <button className="inline-flex items-center gap-1.5 font-semibold text-ink-800 hover:text-brand-600" onClick={() => openView(d)}>
                       {getScenario(d.scenario)?.emoji} {d.scenario}
+                      {d.photoCount > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-ink-400"><ImageIcon size={12} />{d.photoCount}</span>
+                      )}
                     </button>
                   </td>
                   <td className="px-4 py-2.5 text-ink-500">{d.centerName || '—'}</td>
@@ -224,7 +283,7 @@ export default function MockDrills() {
                   <td className="px-4 py-2.5"><Badge color={scoreColor(d.score || 0)}>{d.score ?? 0}%</Badge></td>
                   <td className="px-4 py-2.5">
                     <div className="flex justify-end gap-1">
-                      <button className="btn-soft px-2 py-1.5" title="Download PDF" onClick={() => setPrintRecord(d)}><FileText size={15} /></button>
+                      <button className="btn-soft px-2 py-1.5" title="Download PDF" onClick={() => downloadPdf(d)}><FileText size={15} /></button>
                       <button className="btn-soft px-2 py-1.5 text-red-600" title="Delete" onClick={() => setRemoving(d)}><Trash2 size={15} /></button>
                     </div>
                   </td>
@@ -392,9 +451,32 @@ export default function MockDrills() {
               )}
             </div>
 
+            {/* evidence photos */}
+            <div className="rounded-xl bg-clay-surface/60 p-4 shadow-clay-inset">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-bold text-ink-700">Evidence photos</p>
+                <span className="text-xs text-ink-400">{photos.length}/{MAX_DRILL_PHOTOS}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {photos.map((p) => (
+                  <div key={p.id} className="group relative">
+                    <img src={p.dataUrl} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
+                    <button type="button" onClick={() => removeDrillPhoto(p.id)} className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-red-600 text-white shadow" title="Remove"><X size={11} /></button>
+                  </div>
+                ))}
+                {photos.length < MAX_DRILL_PHOTOS && (
+                  <label className="grid h-20 w-20 cursor-pointer place-items-center rounded-lg border border-dashed border-clay-300 text-ink-400 hover:bg-clay-50">
+                    {uploadingPhoto ? <Spinner size={18} /> : <ImagePlus size={18} />}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={onDrillPhoto} disabled={uploadingPhoto} />
+                  </label>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-ink-400">Photos of the drill, assembly point, issues, etc. Each image ≤ 700 KB.</p>
+            </div>
+
             <div className="flex items-center justify-end gap-2 border-t border-clay-200/60 pt-4">
               <button className="btn-ghost" onClick={closeRecorder}>Cancel</button>
-              <button className="btn-primary" onClick={submit} disabled={busy}>
+              <button className="btn-primary" onClick={submit} disabled={busy || uploadingPhoto}>
                 {busy ? <Spinner size={16} /> : (<><ShieldCheck size={16} /> Submit report</>)}
               </button>
             </div>
@@ -434,9 +516,25 @@ export default function MockDrills() {
               </div>
             )}
             {viewing.debrief && <div><p className="label">Debrief</p><p className="whitespace-pre-wrap rounded-xl bg-clay-100 p-3 text-sm text-ink-700">{viewing.debrief}</p></div>}
+            {(viewing.photoCount > 0 || viewPhotos.length > 0) && (
+              <div>
+                <p className="label">Evidence photos {viewing.photoCount ? `(${viewing.photoCount})` : ''}</p>
+                {viewPhotosLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-ink-500"><Spinner size={16} /> Loading photos…</div>
+                ) : viewPhotos.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {viewPhotos.map((p) => (
+                      <img key={p.id} src={p.dataUrl} alt="Drill evidence" className="h-20 w-20 cursor-pointer rounded-lg border border-clay-200 object-cover" onClick={() => setEnlarge(p.dataUrl)} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-400">No photos could be loaded.</p>
+                )}
+              </div>
+            )}
             <div className="flex justify-end gap-2 border-t border-clay-200/60 pt-4">
               <button className="btn-ghost" onClick={() => setViewing(null)}>Close</button>
-              <button className="btn-primary" onClick={() => { const rec = viewing; setViewing(null); setPrintRecord(rec) }}><FileText size={16} /> Download PDF</button>
+              <button className="btn-primary" onClick={() => { const rec = { ...viewing, photos: viewPhotos.map((p) => p.dataUrl) }; setViewing(null); setPrintRecord(rec) }}><FileText size={16} /> Download PDF</button>
             </div>
           </div>
         )}
@@ -449,6 +547,11 @@ export default function MockDrills() {
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
+      </Modal>
+
+      {/* Full-size photo */}
+      <Modal open={!!enlarge} onClose={() => setEnlarge(null)} title="Evidence photo" maxWidth="max-w-2xl">
+        {enlarge && <img src={enlarge} alt="Drill evidence" className="max-h-[70vh] w-full rounded-xl object-contain" />}
       </Modal>
 
       {/* Off-screen printable report */}

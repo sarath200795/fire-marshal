@@ -140,6 +140,23 @@ export function downloadJsonBackup(data, filename = 'backup.json') {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+/**
+ * Export safety signage as a two-sheet workbook:
+ *  - "Availability Matrix": one row per site, one column per signage type (counts).
+ *  - "Signage Details": the flat list of every signage record.
+ * Both `matrixRows` and `detailRows` are already shaped by the page.
+ */
+export function exportSignage(matrixRows, detailRows, filename = 'safety-signage.xlsx') {
+  const wb = XLSX.utils.book_new()
+  const mws = XLSX.utils.json_to_sheet(matrixRows.length ? matrixRows : [{ Site: '' }])
+  mws['!cols'] = (matrixRows.length ? Object.keys(matrixRows[0]) : ['Site']).map((k) => ({ wch: k === 'Site' ? 26 : 16 }))
+  XLSX.utils.book_append_sheet(wb, mws, 'Availability Matrix')
+  const dws = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ Site: '', Type: '' }])
+  dws['!cols'] = (detailRows.length ? Object.keys(detailRows[0]) : ['Site', 'Type']).map(() => ({ wch: 20 }))
+  XLSX.utils.book_append_sheet(wb, dws, 'Signage Details')
+  downloadWorkbook(wb, filename)
+}
+
 /** Export audit-log rows to .xlsx. `rows` already shaped by the page (When/Actor/Action/…). */
 export function exportAuditLogs(rows, filename = 'audit-log.xlsx') {
   const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ When: '', Actor: '', Action: '', Target: '', Summary: '' }])
