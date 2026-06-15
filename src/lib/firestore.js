@@ -788,6 +788,7 @@ export function subscribeSignages(orgId, cb) {
 const cleanSignage = (data) => ({
   centerName: (data.centerName || '').trim(),
   region: data.region || '',
+  entity: data.entity || '',
   type: data.type || 'Other',
   floor: (data.floor || '').trim(),
   location: (data.location || '').trim(),

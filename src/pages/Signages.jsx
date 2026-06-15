@@ -12,11 +12,13 @@ import {
   SIGNAGE_CONDITION_COLOR,
   FLOOR_SIGNAGE_TYPES,
   REGIONS,
+  ENTITIES,
 } from '../lib/constants'
 
 const EMPTY = {
   centerName: '',
   region: '',
+  entity: '',
   type: 'Stretcher Signage',
   floor: '',
   location: '',
@@ -37,7 +39,7 @@ const ferpCovered = (s) => (s.allFloors ? s.totalFloors || 0 : s.floorsCovered |
 // Conditions that mean the signage exists but needs attention.
 const ISSUE_CONDITIONS = ['Faded', 'Damaged', 'Obstructed']
 
-const EMPTY_FILTERS = { search: '', regions: [], types: [], conditions: [] }
+const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], conditions: [] }
 
 function Field({ label, children }) {
   return (
@@ -81,7 +83,7 @@ export default function Signages() {
   const [busy, setBusy] = useState(false)
 
   const f = filters
-  const anyActive = f.search || f.regions.length || f.types.length || f.conditions.length
+  const anyActive = f.search || f.regions.length || f.entities.length || f.types.length || f.conditions.length
   const toggle = (field, value) =>
     setFilters((prev) => {
       const cur = prev[field]
@@ -97,6 +99,14 @@ export default function Signages() {
     return m
   }, [extinguishers, signages])
 
+  // Each site's entity (from its extinguishers, then signage) — for the Entity filter.
+  const siteEntity = useMemo(() => {
+    const m = {}
+    for (const e of extinguishers) if (e.centerName && e.entity && !m[e.centerName]) m[e.centerName] = e.entity
+    for (const s of signages) if (s.centerName && s.entity && !m[s.centerName]) m[s.centerName] = s.entity
+    return m
+  }, [extinguishers, signages])
+
   // Which signage types are shown as matrix columns (all, unless the Type filter narrows them).
   const visibleTypes = useMemo(
     () => (f.types.length ? SIGNAGE_TYPES.filter((t) => f.types.includes(t)) : SIGNAGE_TYPES),
@@ -108,6 +118,7 @@ export default function Signages() {
     const q = f.search.trim().toLowerCase()
     return sites.filter((site) => {
       if (f.regions.length && !f.regions.includes(siteRegion[site])) return false
+      if (f.entities.length && !f.entities.includes(siteEntity[site])) return false
       if (q) {
         const siteHit = site.toLowerCase().includes(q)
         const recHit = signages.some((s) => s.centerName === site && `${s.type} ${s.location}`.toLowerCase().includes(q))
@@ -115,11 +126,12 @@ export default function Signages() {
       }
       return true
     })
-  }, [sites, signages, f.regions, f.search, siteRegion])
+  }, [sites, signages, f.regions, f.entities, f.search, siteRegion, siteEntity])
 
   // List records: every record matching all active filters.
   const recordMatches = (s) => {
     if (f.regions.length && !f.regions.includes(s.region)) return false
+    if (f.entities.length && !f.entities.includes(s.entity || siteEntity[s.centerName])) return false
     if (f.types.length && !f.types.includes(s.type)) return false
     if (f.conditions.length && !f.conditions.includes(s.condition)) return false
     if (f.search) {
@@ -134,6 +146,7 @@ export default function Signages() {
   const cellFor = (site, type) => {
     let recs = signages.filter((s) => s.centerName === site && s.type === type)
     if (f.regions.length) recs = recs.filter((r) => f.regions.includes(r.region))
+    if (f.entities.length) recs = recs.filter((r) => f.entities.includes(r.entity || siteEntity[site]))
     if (f.conditions.length) recs = recs.filter((r) => f.conditions.includes(r.condition))
     if (recs.length === 0) return { count: 0, status: 'none' }
     // FERP shows floor coverage (covered / total) rather than a plain count.
@@ -212,7 +225,7 @@ export default function Signages() {
   // ── Export: a matrix sheet (counts) + a details sheet (every record) — both respect filters ──
   const handleExport = () => {
     const matrixRows = visibleSites.map((site) => {
-      const row = { Site: site, Region: siteRegion[site] || '' }
+      const row = { Site: site, Region: siteRegion[site] || '', Entity: siteEntity[site] || '' }
       let covered = 0
       for (const t of visibleTypes) {
         const { count } = cellFor(site, t)
@@ -228,6 +241,7 @@ export default function Signages() {
       .map((s) => ({
         Site: s.centerName || '',
         Region: s.region || '',
+        Entity: s.entity || siteEntity[s.centerName] || '',
         Type: s.type,
         Floor: isFerp(s.type) ? (s.totalFloors ? `${ferpCovered(s)}/${s.totalFloors}` : '') : (s.floor || ''),
         Location: s.location || '',
@@ -271,6 +285,7 @@ export default function Signages() {
             {anyActive ? <button className="btn-ghost" onClick={clearFilters}><X size={15} /> Clear</button> : null}
           </div>
           <ChipRow label="Region" options={REGIONS} selected={f.regions} onToggle={(v) => toggle('regions', v)} />
+          <ChipRow label="Entity" options={ENTITIES} selected={f.entities} onToggle={(v) => toggle('entities', v)} />
           <ChipRow label="Type" options={SIGNAGE_TYPES} selected={f.types} onToggle={(v) => toggle('types', v)} />
           <ChipRow label="Condition" options={SIGNAGE_CONDITIONS} selected={f.conditions} onToggle={(v) => toggle('conditions', v)} />
         </div>
@@ -420,6 +435,12 @@ export default function Signages() {
                 <select className="input" value={editing.region} onChange={set('region')}>
                   <option value="">—</option>
                   {REGIONS.map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </Field>
+              <Field label="Entity">
+                <select className="input" value={editing.entity} onChange={set('entity')}>
+                  <option value="">—</option>
+                  {ENTITIES.map((en) => <option key={en}>{en}</option>)}
                 </select>
               </Field>
               <Field label="Signage type">
