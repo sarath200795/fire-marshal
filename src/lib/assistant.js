@@ -24,6 +24,8 @@ const pageOf = (pathname = '') => {
   if (pathname.includes('/add')) return 'add'
   if (pathname.includes('/bulk-upload')) return 'bulk-upload'
   if (pathname.includes('/qr-print')) return 'qr-print'
+  if (pathname.includes('/signages')) return 'signages'
+  if (pathname.includes('/mock-drills')) return 'mock-drills'
   if (pathname.includes('/users')) return 'users'
   return 'dashboard'
 }
@@ -93,6 +95,22 @@ const GUIDES = {
     title: 'Print QR Codes',
     tips: ['Select extinguishers and print 3-up A4 QR labels. Scanning a label opens the public status page.'],
   },
+  signages: {
+    title: 'Safety Signage',
+    tips: [
+      'Matrix view: sites × signage types — green = available, amber = needs attention, red = missing, grey = not recorded.',
+      'Filter by Region, Entity, Type or Condition; export the matrix + details to Excel.',
+      'Click a cell to add a record for that site & sign. FERP captures floor coverage (e.g. 6/8 floors).',
+    ],
+  },
+  'mock-drills': {
+    title: 'Mock Drills',
+    tips: [
+      'Pick a scenario to run a drill — complete the checklist, log teams, action log and CAPA, then save.',
+      'Each record gets a % score; download a PDF report and attach evidence photos.',
+      'Filter the history by site. Ask me "how did our last drill go?".',
+    ],
+  },
   users: {
     title: 'Team & Approvals',
     tips: ['Approve teammates joining your org and manage roles. Use "List my organization" to make it joinable at signup.'],
@@ -112,6 +130,8 @@ const PAGE_QS = {
   'physical-defects': ['How many physical defects?', 'Which defects are most common?'],
   approvals: ['How many pending approvals?', 'What is pending?'],
   add: ['Which extinguisher for an electrical fire?', 'How often should extinguishers be serviced?'],
+  signages: ['How many signage records?', 'Which sites are missing signage?', 'Is FERP on all floors?'],
+  'mock-drills': ['How many mock drills?', 'How did our last drill go?', "What's our average drill score?"],
 }
 export function suggestedQuestions(pathname) {
   const p = pageOf(pathname)
@@ -278,6 +298,141 @@ function closest(qn, names = []) {
   return bestScore > 0 ? best : null
 }
 
+// ── Safety signage answers ────────────────────────────────────────────────────
+const SIGNAGE_TYPE_HINTS = [
+  ['stretcher', 'Stretcher Signage'],
+  ['fire order', 'Fire Order Signage'],
+  ['dug out', 'Dug Out Emergency Contacts'],
+  ['ferp', 'FERP Signage'],
+  ['lift', 'Lift Emergency Contacts'],
+  ['mcp', 'MCP Signage'],
+  ['fas', 'FAS Panel Signage'],
+  ['assembly', 'Assembly Point'],
+  ['fire exit', 'Fire Exit'],
+  ['no smoking', 'No Smoking'],
+  ['first aid', 'First Aid'],
+]
+// The site signages the user cares most about — used for coverage scoring.
+const KEY_SIGNAGE = [
+  'Stretcher Signage', 'Fire Order Signage', 'Dug Out Emergency Contacts', 'FERP Signage',
+  'Lift Emergency Contacts', 'MCP Signage', 'FAS Panel Signage',
+]
+const ferpCov = (s) => (s.allFloors ? s.totalFloors || 0 : s.floorsCovered || 0)
+
+function signageAnswer(qn, c) {
+  const sigs = c.signages || []
+  const sites = c.sites || []
+  if (!sigs.length) return 'No signage recorded yet. Add fire-safety signage under Site Safety → Safety Signage, then I can report coverage by site.'
+
+  const site = sites.find((s) => norm(s).length >= 3 && qn.includes(norm(s)))
+  const typeHit = SIGNAGE_TYPE_HINTS.find(([k]) => qn.includes(k))
+  const type = typeHit ? typeHit[1] : null
+
+  // FERP floor coverage
+  if (type === 'FERP Signage' || qn.includes('ferp') || (qn.includes('floor') && qn.includes('plan'))) {
+    const ferps = sigs.filter((s) => s.type === 'FERP Signage')
+    if (site) {
+      const rec = ferps.filter((s) => norm(s.centerName) === norm(site)).sort((a, b) => (b.totalFloors || 0) - (a.totalFloors || 0))[0]
+      if (!rec) return `No FERP signage recorded for ${site} yet.`
+      const total = rec.totalFloors || 0, cov = ferpCov(rec)
+      return `FERP at ${site}: ${total ? `${cov}/${total} floors${cov >= total ? ' — on all floors ✅' : ' — partial ⚠️'}` : 'recorded'}.`
+    }
+    if (!ferps.length) return 'No FERP signage recorded yet. Add it with the building floor count under Safety Signage.'
+    const allOk = ferps.filter((s) => (s.totalFloors || 0) > 0 && ferpCov(s) >= (s.totalFloors || 0))
+    const partial = ferps.filter((s) => (s.totalFloors || 0) > 0 && ferpCov(s) < (s.totalFloors || 0))
+    return `FERP recorded at ${ferps.length} site(s): ${allOk.length} on all floors, ${partial.length} partial${partial.length ? ` — ${list(partial.map((s) => `${s.centerName} ${ferpCov(s)}/${s.totalFloors || '?'}`), 3)}` : ' ✅'}.`
+  }
+
+  // A specific signage type across sites
+  if (type) {
+    const recs = sigs.filter((s) => s.type === type)
+    if (site) {
+      const here = recs.filter((s) => norm(s.centerName) === norm(site))
+      return here.length ? `${type} at ${site}: ${here.length} record(s)${here[0].condition ? `, condition ${here.map((s) => s.condition).join('/')}` : ''}.` : `${type} is NOT recorded at ${site}. ⚠️`
+    }
+    const onSites = new Set(recs.map((s) => s.centerName))
+    const missing = sites.filter((s) => !onSites.has(s))
+    return `${type}: recorded at ${onSites.size}/${sites.length} site(s) (${recs.length} record(s)).${missing.length ? ` Missing at ${list(missing, 3)}.` : ' Present at every site ✅'}`
+  }
+
+  // A whole site's signage
+  if (site) {
+    const recs = sigs.filter((s) => norm(s.centerName) === norm(site))
+    if (!recs.length) return `No signage recorded for ${site} yet.`
+    const present = Array.from(new Set(recs.map((s) => s.type)))
+    const missingKey = KEY_SIGNAGE.filter((t) => !present.includes(t))
+    const issues = recs.filter((s) => s.condition && s.condition !== 'OK')
+    return `${site}: ${recs.length} record(s) across ${present.length} type(s).${missingKey.length ? ` Missing key signage: ${list(missingKey, 4)}.` : ' All key signage present ✅.'}${issues.length ? ` ${issues.length} need attention.` : ''}`
+  }
+
+  // Coverage / gaps across sites ("which sites are missing signage?")
+  if (/gap|coverage|cover|which site|incomplete|complete|least|worst|behind|missing/.test(qn)) {
+    const cov = sites.map((s) => {
+      const present = new Set(sigs.filter((x) => norm(x.centerName) === norm(s)).map((x) => x.type))
+      return { s, n: KEY_SIGNAGE.filter((t) => present.has(t)).length }
+    }).sort((a, b) => a.n - b.n)
+    const worst = cov.filter((x) => x.n < KEY_SIGNAGE.length)
+    if (!worst.length) return `Every site has all ${KEY_SIGNAGE.length} key signage types. ✅`
+    return `Signage coverage (of ${KEY_SIGNAGE.length} key types) — lowest: ${list(worst.map((x) => `${x.s} ${x.n}/${KEY_SIGNAGE.length}`), 4)}.`
+  }
+
+  // Condition problems (damaged / faded / obstructed / etc.)
+  if (/damaged|faded|obstruct|condition|attention|broken|issue|fault/.test(qn)) {
+    const issues = sigs.filter((s) => s.condition && s.condition !== 'OK')
+    if (!issues.length) return 'All recorded signage is in OK condition. ✅'
+    const byCond = tally(issues, (s) => s.condition)
+    return `${issues.length} signage item(s) need attention: ${byCond.map(([cn, n]) => `${cn} (${n})`).join(', ')}. e.g. ${list(issues.map((s) => `${s.type} @ ${s.centerName}`), 2)}.`
+  }
+
+  // General count + breakdown
+  const byType = tally(sigs, (s) => s.type)
+  const sitesWith = new Set(sigs.map((s) => s.centerName)).size
+  return `${sigs.length} signage record(s) across ${sitesWith} site(s). By type: ${byType.slice(0, 5).map(([t, n]) => `${t} (${n})`).join(', ')}${byType.length > 5 ? '…' : ''}.`
+}
+
+// ── Mock drill answers ────────────────────────────────────────────────────────
+const drillAvg = (rows) => (rows.length ? Math.round(rows.reduce((a, d) => a + (d.score || 0), 0) / rows.length) : 0)
+const byDateDesc = (a, b) => String(b.date || '').localeCompare(String(a.date || ''))
+
+function drillAnswer(qn, c) {
+  const drills = c.mockDrills || []
+  const sites = c.sites || []
+  if (!drills.length) return 'No mock drills recorded yet. Run one under Site Safety → Mock Drills — pick a scenario, complete the checklist, then save.'
+
+  const site = sites.find((s) => norm(s).length >= 3 && qn.includes(norm(s)))
+
+  if (site) {
+    const rows = drills.filter((d) => norm(d.centerName) === norm(site))
+    if (!rows.length) return `No mock drills recorded for ${site} yet.`
+    const last = [...rows].sort(byDateDesc)[0]
+    return `${site}: ${rows.length} drill(s), avg score ${drillAvg(rows)}%. Latest: ${last.scenario} on ${last.date || '—'} (${last.score ?? 0}%, ${last.outcome || '—'}).`
+  }
+
+  if (/last|recent|latest|how did/.test(qn)) {
+    const d = [...drills].sort(byDateDesc)[0]
+    return `Most recent: ${d.scenario} at ${d.centerName || '—'} on ${d.date || '—'} — ${d.score ?? 0}%, ${d.outcome || '—'} (${d.eventType || 'Mock Drill'}).`
+  }
+  if (/real|emergenc/.test(qn)) {
+    const real = drills.filter((d) => d.eventType === 'Real Emergency')
+    if (!real.length) return `No real emergencies logged — all ${drills.length} record(s) are mock drills. ✅`
+    const last = [...real].sort(byDateDesc)[0]
+    return `${real.length} real emergency record(s) (vs ${drills.length - real.length} mock drill(s)). Latest: ${last.scenario} @ ${last.centerName || '—'} on ${last.date || '—'}.`
+  }
+  if (/score|average|avg|pass|fail|perform|outcome/.test(qn)) {
+    const low = [...drills].sort((a, b) => (a.score || 0) - (b.score || 0))[0]
+    const fails = drills.filter((d) => d.outcome === 'Fail').length
+    return `Average drill score ${drillAvg(drills)}% across ${drills.length} drill(s). Lowest: ${low.scenario} @ ${low.centerName || '—'} (${low.score ?? 0}%).${fails ? ` ${fails} failed.` : ''}`
+  }
+  if (/scenario|which|type|breakdown|kind/.test(qn)) {
+    const byScn = tally(drills, (d) => d.scenario)
+    return `Drills by scenario: ${byScn.map(([s, n]) => `${s} (${n})`).join(', ')}.`
+  }
+
+  const byScn = tally(drills, (d) => d.scenario)
+  const sitesWith = new Set(drills.map((d) => d.centerName)).size
+  return `${drills.length} drill(s) across ${sitesWith} site(s), avg score ${drillAvg(drills)}%. Top scenarios: ${byScn.slice(0, 3).map(([s, n]) => `${s} (${n})`).join(', ')}.`
+}
+
 // ── Answering ────────────────────────────────────────────────────────────────
 /**
  * Answer a free-typed question from the live fleet context.
@@ -332,6 +487,12 @@ export function answer(question, ctx) {
     if (ds.added) parts.push(`${ds.added} extinguisher(s) added`)
     return hit(`Today’s status (${ds.total} change(s)):\n${parts.length ? parts.map((p) => `• ${p}`).join('\n') : '• misc. edits only'}.`)
   }
+
+  // ── Safety signage & mock drills (checked before extinguisher center lookups) ──
+  if (/signage|stretcher|\bferp\b|\bmcp\b|fas panel|fire order|dug out|assembly point|lift emergency|order board/.test(qn))
+    return hit(signageAnswer(qn, c))
+  if (/\bdrills?\b|mock drill|evacuation drill|fire drill|emergency drill|drill score/.test(qn))
+    return hit(drillAnswer(qn, c))
 
   // ── Navigation intent (add an extinguisher) ──
   if (/\b(add|create|new|register)\b/.test(qn) && qn.includes('extinguish'))
@@ -458,7 +619,7 @@ export function answer(question, ctx) {
     {
       keywords: ['help', 'what can you', 'who are you', 'what do you do'],
       tokenKeywords: ['hi', 'hello', 'hey'],
-      run: () => 'Hi! I read your live fleet data. Ask me for a summary, today’s status (from the activity log), what needs attention, refill-due / in-process / defect counts, the status of a specific cylinder by serial (e.g. “status of FE-0001”), or all extinguishers at a center by name — plus general fire-safety guidance (e.g. “which extinguisher for an electrical fire?”).',
+      run: () => 'Hi! I read your live fleet data. Ask me for a summary, today’s status, what needs attention, refill-due / in-process / defect counts, or a cylinder by serial (e.g. “status of FE-0001”). I also cover Safety Signage (e.g. “which sites are missing signage?”, “is FERP on all floors?”) and Mock Drills (e.g. “how did our last drill go?”, “average drill score?”) — plus general fire-safety guidance.',
     },
   ]
 
@@ -518,6 +679,24 @@ export function buildAIContext(ctx) {
     today: dailyStatus(c.auditLogs || [], today),
     centers: Array.from(new Set(ext.map((e) => e.centerName).filter(Boolean))).slice(0, 50),
     fleetWideTotals: c.stats || null,
+    signage: (() => {
+      const sigs = c.signages || []
+      return {
+        total: sigs.length,
+        sitesCovered: new Set(sigs.map((s) => s.centerName).filter(Boolean)).size,
+        byType: tally(sigs, (s) => s.type).map(([type, count]) => ({ type, count })),
+        needingAttention: sigs.filter((s) => s.condition && s.condition !== 'OK').length,
+      }
+    })(),
+    mockDrills: (() => {
+      const drills = c.mockDrills || []
+      return {
+        total: drills.length,
+        avgScore: drills.length ? Math.round(drills.reduce((a, d) => a + (d.score || 0), 0) / drills.length) : 0,
+        realEmergencies: drills.filter((d) => d.eventType === 'Real Emergency').length,
+        byScenario: tally(drills, (d) => d.scenario).map(([scenario, count]) => ({ scenario, count })),
+      }
+    })(),
   }
 }
 
