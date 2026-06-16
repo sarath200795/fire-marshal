@@ -41,9 +41,9 @@ export function TableSkeleton({ rows = 6, cols = 6, className = '' }) {
 }
 
 /** A grid of KPI-card skeletons (Dashboard). */
-export function KpiSkeleton({ count = 6 }) {
+export function KpiSkeleton({ count = 7 }) {
   return (
-    <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6" aria-busy="true">
+    <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7" aria-busy="true">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="card p-5">
           <Skeleton className="mb-3 h-11 w-11 rounded-xl" />

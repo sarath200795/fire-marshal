@@ -6,7 +6,7 @@ import {
   RadialBarChart, RadialBar, Legend, LabelList,
 } from 'recharts'
 import {
-  LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search, AlertTriangle,
+  LayoutDashboard, ShieldCheck, RefreshCw, Truck, Wrench, CheckCircle2, Boxes, Filter, X, Search, AlertTriangle, MapPin,
 } from 'lucide-react'
 import { PageHeader } from '../components/ui'
 import { KpiSkeleton, ChartSkeleton, FilterBarSkeleton } from '../components/Skeleton'
@@ -130,6 +130,8 @@ export default function Dashboard() {
   const inProcess = useMemo(() => filtered.filter((e) => isInProcess(e)), [filtered])
   const physicalDefects = useMemo(() => filtered.filter((e) => isPhysicalDefect(e)), [filtered])
   const closed = useMemo(() => filtered.filter((e) => isRefilledClosed(e)), [filtered])
+  // Distinct sites among the filtered extinguishers — responds to the active filters.
+  const siteCount = useMemo(() => new Set(filtered.map((e) => e.centerName).filter(Boolean)).size, [filtered])
 
   const typeData = useMemo(
     () => TYPES.map((t) => ({ name: t, value: filtered.filter((e) => e.type === t).length, color: TYPE_COLORS[t] })).filter((d) => d.value > 0),
@@ -159,6 +161,7 @@ export default function Dashboard() {
   // KPI cards — clickable where they map to a filter dimension.
   const kpis = [
     { label: 'Total Extinguishers', value: summary.total, color: '#1c2230', icon: Boxes, onClick: clearAll },
+    { label: 'Sites', value: siteCount, color: '#0d9488', icon: MapPin, to: '/app/signages' },
     { label: 'Healthy', value: summary.healthy, color: '#16a34a', icon: ShieldCheck, onClick: () => setSingle('category', CATEGORIES.HEALTHY.key) },
     { label: 'To Be Refilled', value: refillDue.length, color: '#f59e0b', icon: RefreshCw, to: '/app/refill-due' },
     { label: 'In Process', value: inProcess.length, color: '#6366f1', icon: Truck, onClick: () => setSingle('status', STATUS.IN_PROCESS_REFILLING) },
@@ -171,7 +174,7 @@ export default function Dashboard() {
       <div>
         <PageHeader title="Dashboard" subtitle="Click any chart segment to filter. Selections stack across charts." icon={LayoutDashboard} />
         <FilterBarSkeleton />
-        <KpiSkeleton />
+        <KpiSkeleton count={7} />
         <ChartSkeleton />
       </div>
     )
@@ -237,7 +240,7 @@ export default function Dashboard() {
       )}
 
       {/* KPI cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-7">
         {kpis.map((k, i) => {
           const inner = (
             <>

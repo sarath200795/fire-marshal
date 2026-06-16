@@ -80,6 +80,7 @@ export default function Signages() {
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [editing, setEditing] = useState(null) // signage object or {…EMPTY}
   const [removing, setRemoving] = useState(null)
+  const [cellView, setCellView] = useState(null) // { site, type } — matrix cell detail panel
   const [busy, setBusy] = useState(false)
 
   const f = filters
@@ -344,8 +345,8 @@ export default function Signages() {
                       {cells.map((c) => (
                         <td key={c.t} className="border-b border-l border-clay-200/40 p-1 text-center">
                           <button
-                            onClick={() => (c.count > 0 ? (setFilters({ ...EMPTY_FILTERS, search: site }), setView('list')) : openAddFor(site, c.t))}
-                            title={c.count > 0 ? `${c.count} record(s) — click to view` : 'Not recorded — click to add'}
+                            onClick={() => (c.count > 0 ? setCellView({ site, type: c.t }) : openAddFor(site, c.t))}
+                            title={c.count > 0 ? `${c.count} record(s) — click to manage` : 'Not recorded — click to add'}
                             className={`flex h-9 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold transition hover:ring-2 hover:ring-brand-200 ${cellStyles[c.status]}`}
                           >
                             {c.status === 'none' ? '—' : c.label ? <span>{c.label}</span> : c.status === 'missing' ? <X size={14} /> : <Check size={14} />}
@@ -510,6 +511,51 @@ export default function Signages() {
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
+      </Modal>
+
+      {/* Matrix cell — manage this site's records for one signage type */}
+      <Modal open={!!cellView} onClose={() => setCellView(null)} title={cellView ? `${cellView.type} · ${cellView.site}` : ''}>
+        {cellView && (() => {
+          const recs = signages.filter((s) => s.centerName === cellView.site && s.type === cellView.type)
+          return (
+            <div>
+              {recs.length === 0 ? (
+                <p className="text-sm text-ink-500">No records left for this sign at this site.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {recs.map((s) => (
+                    <li key={s.id} className="flex items-center gap-3 rounded-xl border border-clay-200/60 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge color={SIGNAGE_CONDITION_COLOR[s.condition] || '#64748b'}>{s.condition}</Badge>
+                          {isFerp(s.type) && s.totalFloors ? (
+                            <span className="text-xs text-ink-500">{ferpCovered(s)}/{s.totalFloors} floors</span>
+                          ) : s.floor ? (
+                            <span className="text-xs text-ink-500">Floor {s.floor}</span>
+                          ) : null}
+                          <span className="text-xs text-ink-400">Qty {s.quantity}</span>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-ink-500">
+                          {s.location || 'No location'}{s.lastChecked ? ` · checked ${s.lastChecked}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button className="btn-soft px-2 py-1.5" title="Edit" onClick={() => { setEditing(s); setCellView(null) }}><Pencil size={15} /></button>
+                        <button className="btn-soft px-2 py-1.5 text-red-600" title="Remove (damaged / removed)" onClick={() => setRemoving(s)}><Trash2 size={15} /></button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4 flex justify-end gap-2 border-t border-clay-200/60 pt-3">
+                <button className="btn-ghost" onClick={() => setCellView(null)}>Close</button>
+                <button className="btn-primary" onClick={() => { openAddFor(cellView.site, cellView.type); setCellView(null) }}>
+                  <Plus size={16} /> Add another
+                </button>
+              </div>
+            </div>
+          )
+        })()}
       </Modal>
     </div>
   )
