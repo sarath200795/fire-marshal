@@ -5,6 +5,7 @@ const MAP = {
   'auth/invalid-email': 'That email address looks invalid.',
   'auth/weak-password': 'Password should be at least 6 characters.',
   'auth/user-not-found': 'No account found with that email.',
+  'auth/missing-email': 'Please enter your email address.',
   'auth/wrong-password': 'Incorrect email or password.',
   'auth/invalid-credential': 'Incorrect email or password.',
   'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
