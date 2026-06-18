@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { AnimatePresence } from 'framer-motion'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicOnlyRoute from './components/PublicOnlyRoute'
 import Layout from './components/Layout'
@@ -46,12 +45,18 @@ function AppShell() {
 }
 
 export default function App() {
-  const location = useLocation()
   if (!isFirebaseConfigured) return <SetupNeeded />
+  // NOTE: the route tree was previously wrapped in <AnimatePresence mode="wait">
+  // keyed on the pathname. That made the incoming page wait for the outgoing
+  // page's exit animations to finish — and the in-app subtree (sidebar drawer,
+  // the always-animating Assistant, etc.) never cleanly signalled "exit done",
+  // so after logout the login page mounted but stayed at its initial opacity:0
+  // (a blank screen). Pages still animate in on mount via their own
+  // initial/animate props, so rendering <Routes> directly keeps the entrance
+  // motion without the fragile cross-page exit gating.
   return (
     <Suspense fallback={<FullScreenLoader label="Loading…" />}>
-      <AnimatePresence mode="wait">
-        <Routes location={location} key={location.pathname}>
+        <Routes>
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
           <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
           <Route path="/signup" element={<PublicOnlyRoute><Signup /></PublicOnlyRoute>} />
@@ -87,7 +92,6 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
         </Routes>
-      </AnimatePresence>
     </Suspense>
   )
 }
