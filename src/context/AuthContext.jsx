@@ -100,6 +100,11 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     await fbSignOut(auth)
+    // Clear user + profile synchronously. Relying on the onAuthStateChanged
+    // listener alone leaves a brief "authed but no profile" window that the
+    // route guards mistake for a pending state, flashing a blank screen before
+    // the login page settles.
+    setUser(null)
     setProfile(null)
   }
 
