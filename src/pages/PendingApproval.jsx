@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Clock, LogOut, RefreshCw, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -9,11 +8,12 @@ export default function PendingApproval() {
   const { profile, isApproved, isAuthed, signOut, refreshProfile } = useAuth()
   const navigate = useNavigate()
 
-  // If approved (e.g. admin just approved), bounce into the app.
-  useEffect(() => {
-    if (isApproved) navigate('/app/dashboard', { replace: true })
-    if (!isAuthed) navigate('/login', { replace: true })
-  }, [isApproved, isAuthed, navigate])
+  // Redirect declaratively (during render) rather than from an effect — an
+  // effect that calls navigate() can re-fire across re-renders and trip the
+  // browser's "Throttling navigation" protection. Order matters: bounce signed
+  // -out visitors to login, and approved members into the app.
+  if (!isAuthed) return <Navigate to="/login" replace />
+  if (isApproved) return <Navigate to="/app/dashboard" replace />
 
   const rejected = profile?.status === 'rejected'
 
