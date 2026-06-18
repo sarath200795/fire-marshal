@@ -70,7 +70,7 @@ export default function PendingApproval() {
             className="btn bg-white/10 text-white hover:bg-white/20"
             onClick={async () => {
               await signOut()
-              navigate('/login')
+              navigate('/login', { replace: true })
             }}
           >
             <LogOut size={16} /> Sign out

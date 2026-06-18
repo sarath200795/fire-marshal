@@ -79,7 +79,7 @@ export default function Layout() {
 
   const doLogout = async () => {
     await signOut()
-    navigate('/login')
+    navigate('/login', { replace: true })
   }
 
   // Auto-logout after inactivity, with a warning countdown before it fires.
