@@ -13,6 +13,7 @@ import SetupNeeded from './pages/SetupNeeded'
 const Login = lazy(() => import('./pages/Login'))
 const Signup = lazy(() => import('./pages/Signup'))
 const RegisterOrg = lazy(() => import('./pages/RegisterOrg'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const PendingApproval = lazy(() => import('./pages/PendingApproval'))
 const PublicQR = lazy(() => import('./pages/PublicQR'))
 const Legal = lazy(() => import('./pages/Legal'))
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
           <Route path="/signup" element={<PublicOnlyRoute><Signup /></PublicOnlyRoute>} />
           <Route path="/register-org" element={<PublicOnlyRoute><RegisterOrg /></PublicOnlyRoute>} />
+          <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
           <Route path="/pending" element={<PendingApproval />} />
           <Route path="/qr/:token" element={<PublicQR />} />
           <Route path="/privacy" element={<Legal kind="privacy" />} />
