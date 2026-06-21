@@ -116,6 +116,128 @@ export async function dismissCoachmarks(page) {
   return false
 }
 
+// Keep "Sam" on screen but quiet: make the app believe every guide tip / greeting
+// / onboarding tour has already been seen, so the character renders without the
+// popup bubbles. Installed before any document loads so it survives navigation.
+export async function makeSamQuiet(page) {
+  await page.evaluateOnNewDocument(() => {
+    try {
+      const realGet = Storage.prototype.getItem
+      Storage.prototype.getItem = function (k) {
+        if (typeof k === 'string' && /guide:(tip|greeted|tour)/i.test(k)) return '1'
+        return realGet.call(this, k)
+      }
+    } catch { /* ignore */ }
+  })
+}
+
+// ── Narration (offline TTS) ─────────────────────────────────────────────────
+// Synthesizes each line to a WAV with espeak-ng (mbrola voice when available),
+// accumulating a timeline aligned to the screencast clock so the final audio
+// track lines up with the on-screen captions.
+const SR = 22050
+let audio = null
+
+export function initAudio(workDir, t0) {
+  fs.rmSync(workDir, { recursive: true, force: true })
+  fs.mkdirSync(workDir, { recursive: true })
+  audio = { workDir, t0, cursor: 0, segs: [], n: 0 }
+}
+
+function wavDuration(file) {
+  const sz = fs.statSync(file).size
+  return Math.max(0.1, (sz - 44) / (SR * 2)) // 16-bit mono
+}
+
+function synth(text) {
+  const f = `${audio.workDir}/clip${audio.n++}.wav`
+  let r = spawnSync('espeak-ng', ['-v', 'mb-us1', '-s', '148', '-w', f, text], { encoding: 'utf8' })
+  if (r.status !== 0 || !fs.existsSync(f)) {
+    spawnSync('espeak-ng', ['-v', 'en-us', '-s', '150', '-p', '45', '-w', f, text])
+  }
+  return { file: f, dur: wavDuration(f) }
+}
+
+// Hold for `ms`, forcing a repaint every ~180ms so the CDP screencast keeps
+// emitting frames even on otherwise-static pages (e.g. the title cards). Without
+// this, the video clock lags the narration and the tail gets trimmed.
+async function holdWithFrames(page, ms) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    try {
+      await page.evaluate(() => {
+        let e = document.getElementById('__keepalive__')
+        if (!e) {
+          e = document.createElement('div')
+          e.id = '__keepalive__'
+          e.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:2147483647'
+          document.documentElement.appendChild(e)
+        }
+        e.style.background = e.style.background === 'rgb(0, 0, 0)' ? 'rgb(0, 0, 1)' : 'rgb(0, 0, 0)'
+      })
+    } catch { /* navigation in flight */ }
+    await sleep(180)
+  }
+}
+
+// Speak a line now: pad silence up to the current video time, append the clip,
+// then hold the scene for the clip's duration (keeping the screencast alive).
+export async function say(page, text) {
+  if (!audio) { await sleep(800); return }
+  const clip = synth(text)
+  const nowRel = (Date.now() - audio.t0) / 1000
+  if (nowRel > audio.cursor + 0.02) { audio.segs.push({ type: 'sil', dur: nowRel - audio.cursor }); audio.cursor = nowRel }
+  audio.segs.push({ type: 'clip', file: clip.file }); audio.cursor += clip.dur
+  await holdWithFrames(page, Math.round(clip.dur * 1000) + 350)
+}
+
+export function finalizeAudio(outWav, totalVideoSec) {
+  const silCache = {}
+  const silFile = (dur) => {
+    const key = Math.max(0.02, dur).toFixed(2)
+    if (!silCache[key]) {
+      const f = `${audio.workDir}/sil_${key}.wav`
+      spawnSync(FFMPEG, ['-y', '-f', 'lavfi', '-i', `anullsrc=r=${SR}:cl=mono`, '-t', key, '-c:a', 'pcm_s16le', f])
+      silCache[key] = f
+    }
+    return silCache[key]
+  }
+  let list = ''
+  for (const s of audio.segs) list += `file '${s.type === 'sil' ? silFile(s.dur) : s.file}'\n`
+  if (totalVideoSec > audio.cursor + 0.1) list += `file '${silFile(totalVideoSec - audio.cursor)}'\n`
+  const listFile = `${audio.workDir}/list.txt`
+  fs.writeFileSync(listFile, list)
+  const r = spawnSync(FFMPEG, ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c:a', 'pcm_s16le', outWav], { encoding: 'utf8' })
+  if (r.status !== 0) throw new Error('audio concat failed: ' + String(r.stderr || '').slice(-400))
+  return outWav
+}
+
+export function muxAudio(videoFile, wavFile, outFile) {
+  const r = spawnSync(FFMPEG, ['-y', '-i', videoFile, '-i', wavFile, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', outFile], { encoding: 'utf8' })
+  if (r.status !== 0) throw new Error('mux failed: ' + String(r.stderr || '').slice(-400))
+  return outFile
+}
+
+// ── Full-screen title card (Welcome / Thank you) ─────────────────────────────
+export async function showCard(page, { kicker, title, subtitle, accent = '#f97316' }) {
+  await page.goto('about:blank')
+  await page.evaluate((o) => {
+    document.body.style.margin = '0'
+    const wrap = document.createElement('div')
+    wrap.style.cssText = [
+      'position:fixed', 'inset:0', 'display:flex', 'flex-direction:column',
+      'align-items:center', 'justify-content:center', 'text-align:center', 'padding:48px',
+      'background:radial-gradient(1200px 620px at 50% 28%, #1c2740 0%, #0a0e1a 70%)',
+      'color:#fff', 'font-family:system-ui,-apple-system,Segoe UI,sans-serif',
+    ].join(';')
+    wrap.innerHTML =
+      `<div style="font-size:15px;letter-spacing:.34em;text-transform:uppercase;color:${o.accent};font-weight:700;margin-bottom:20px">${o.kicker}</div>` +
+      `<div style="font-size:58px;font-weight:800;letter-spacing:-.01em;margin-bottom:16px">${o.title}</div>` +
+      `<div style="font-size:22px;font-weight:400;opacity:.85;max-width:780px;line-height:1.55">${o.subtitle}</div>`
+    document.documentElement.appendChild(wrap)
+  }, { kicker, title, subtitle, accent })
+}
+
 // Human-paced typing.
 export async function slowType(page, selector, text, delay = 55) {
   const el = await page.waitForSelector(selector, { timeout: 15000 })
