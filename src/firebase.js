@@ -1,6 +1,11 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import {
+  getAuth,
+  setPersistence,
+  browserSessionPersistence,
+  connectAuthEmulator,
+} from 'firebase/auth'
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -24,6 +29,16 @@ if (!isFirebaseConfigured) {
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+
+// ── Local emulator wiring (demo / offline dev only) ──────────────────────────
+// When VITE_USE_EMULATOR is "1" we point Auth + Firestore at the local Firebase
+// emulators instead of a live project. Guarded by an env flag that is absent in
+// production builds, so this has no effect on deployed hosting.
+export const usingEmulator = import.meta.env.VITE_USE_EMULATOR === '1'
+if (usingEmulator) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
+  connectFirestoreEmulator(db, '127.0.0.1', 8080)
+}
 
 // Use session persistence (sessionStorage): the login is dropped when the tab /
 // browser is closed, so reopening requires signing in again. A same-tab reload

@@ -1,0 +1,14 @@
+{
+  "name": "fire-marshal-demo",
+  "private": true,
+  "type": "module",
+  "description": "Headless screen-recording harness for the tutorial video.",
+  "scripts": {
+    "record": "node record.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@sparticuz/chromium": "^149.0.0",
+    "puppeteer-core": "^23.0.0"
+  }
+}
