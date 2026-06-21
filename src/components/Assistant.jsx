@@ -32,9 +32,11 @@ const TOUR = [
   { to: '/app/dashboard', title: 'Dashboard', text: 'Your live fleet overview. Click any chart slice or KPI card to filter every widget at once.' },
   { to: '/app/repository', title: 'Repository', text: 'Every extinguisher lives here. Filter and search, print QR labels, and run per-row actions.' },
   { to: '/app/add', title: 'Add extinguishers', text: 'Add units one at a time here — or use Bulk Upload for many. A QR code is generated on save.' },
+  { to: '/app/qr-print', title: 'Print QR codes', text: 'Select extinguishers and print 3-up A4 QR labels. Scanning a label opens that unit’s public status page.' },
   { to: '/app/refill-due', title: 'The refill workflow', text: 'The left menu tracks each unit’s journey: To Be Refilled → In Process → Refilled & Closed.' },
-  { to: '/app/signages', title: 'Site Safety', text: 'Track safety-signage coverage by site, and run mock drills — all under Site Safety.' },
-  { to: '/app/dashboard', title: "You're all set! 🎉", text: 'Tap me anytime to ask about your fleet, refills or defects. I’m always here to help!' },
+  { to: '/app/signages', title: 'Safety signage', text: 'Track safety-signage coverage across every site, and export the matrix to Excel.' },
+  { to: '/app/mock-drills', title: 'Mock drills & incidents', text: 'Log fire drills and real emergencies here — run a scenario checklist, record teams & incident commanders, and get a scored PDF report.' },
+  { to: '/app/dashboard', title: "You're all set! 🎉", text: 'Tap me anytime to ask about your fleet, refills, defects or drills. I’m always here to help!' },
 ]
 
 const SKIN = '#e8b48f', SKIN_D = '#c98b62', HAT = '#f4b400', HAT_D = '#c98a00'
