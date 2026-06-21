@@ -14,10 +14,9 @@ credentials required.
 ## Prerequisites
 - Node 18+, Java (for the Firestore emulator), and `firebase-tools` on PATH.
 - App dependencies installed in the repo root: `npm install`.
-- For voiceover narration: `espeak-ng` (and optionally `mbrola` + `mbrola-us1`
-  for a more natural voice), e.g. `apt-get install -y espeak-ng mbrola mbrola-us1`.
 
-See `SCRIPT.md` for the full narration script.
+The tutorial uses on-screen **closed-caption text** (no audio). See `SCRIPT.md`
+for the full caption text per scene.
 
 ## Run
 ```bash

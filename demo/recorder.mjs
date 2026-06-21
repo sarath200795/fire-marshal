@@ -72,6 +72,8 @@ export async function stopAndEncode(rec, outFile, width = 1366) {
 }
 
 // Inject / update a fixed caption banner so the recording reads as a tutorial.
+// Bottom caption banner with a bold step title and a closed-caption line that
+// `say()` fills in with the descriptive narration text.
 export async function caption(page, title, sub = '') {
   await page.evaluate(({ title, sub }) => {
     let el = document.getElementById('__demo_caption__')
@@ -80,16 +82,18 @@ export async function caption(page, title, sub = '') {
       el.id = '__demo_caption__'
       el.style.cssText = [
         'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:2147483647',
-        'padding:16px 26px 18px', 'pointer-events:none',
-        'background:linear-gradient(transparent,rgba(2,6,23,.55) 35%,rgba(2,6,23,.9))',
+        'padding:18px 30px 24px', 'pointer-events:none',
+        'background:linear-gradient(transparent,rgba(2,6,23,.5) 30%,rgba(2,6,23,.94))',
         'color:#fff', "font-family:system-ui,-apple-system,Segoe UI,sans-serif",
-        'text-shadow:0 1px 4px rgba(0,0,0,.8)',
+        'text-shadow:0 1px 4px rgba(0,0,0,.85)',
       ].join(';')
+      el.innerHTML =
+        '<div id="__cap_title__" style="font-size:26px;font-weight:700"></div>' +
+        '<div id="__cap_cc__" style="font-size:19px;font-weight:400;opacity:.96;margin-top:7px;min-height:26px;max-width:1100px"></div>'
       document.documentElement.appendChild(el)
     }
-    el.innerHTML =
-      `<div style="font-size:24px;font-weight:700">${title}</div>` +
-      (sub ? `<div style="font-size:15px;font-weight:400;opacity:.9;margin-top:5px">${sub}</div>` : '')
+    document.getElementById('__cap_title__').textContent = title || ''
+    document.getElementById('__cap_cc__').textContent = sub || ''
   }, { title, sub })
 }
 
@@ -149,12 +153,20 @@ function wavDuration(file) {
   return Math.max(0.1, (sz - 44) / (SR * 2)) // 16-bit mono
 }
 
+// Clarity pass: roll off low rumble, lift presence ~3 kHz, dynamic-normalize.
+const CLARITY = 'highpass=f=90,equalizer=f=3000:t=o:w=2:g=4,dynaudnorm'
 function synth(text) {
-  const f = `${audio.workDir}/clip${audio.n++}.wav`
-  let r = spawnSync('espeak-ng', ['-v', 'mb-us1', '-s', '148', '-w', f, text], { encoding: 'utf8' })
-  if (r.status !== 0 || !fs.existsSync(f)) {
-    spawnSync('espeak-ng', ['-v', 'en-us', '-s', '150', '-p', '45', '-w', f, text])
+  const i = audio.n++
+  const raw = `${audio.workDir}/raw${i}.wav`
+  const f = `${audio.workDir}/clip${i}.wav`
+  // Crisp, clearly-enunciated espeak voice at a conversational rate.
+  const r = spawnSync('espeak-ng', ['-v', 'en-us', '-s', '150', '-g', '4', '-w', raw, text], { encoding: 'utf8' })
+  if (r.status !== 0 || !fs.existsSync(raw)) {
+    spawnSync('espeak-ng', ['-s', '150', '-g', '4', '-w', raw, text])
   }
+  const ff = spawnSync(FFMPEG, ['-y', '-i', raw, '-af', CLARITY,
+    '-ar', String(SR), '-ac', '1', '-c:a', 'pcm_s16le', f], { encoding: 'utf8' })
+  if (ff.status !== 0 || !fs.existsSync(f)) fs.copyFileSync(raw, f)
   return { file: f, dur: wavDuration(f) }
 }
 
@@ -180,15 +192,16 @@ async function holdWithFrames(page, ms) {
   }
 }
 
-// Speak a line now: pad silence up to the current video time, append the clip,
-// then hold the scene for the clip's duration (keeping the screencast alive).
+// Show a narration line as an on-screen closed-caption (no audio) and hold for
+// a brisk reading time proportional to its length.
 export async function say(page, text) {
-  if (!audio) { await sleep(800); return }
-  const clip = synth(text)
-  const nowRel = (Date.now() - audio.t0) / 1000
-  if (nowRel > audio.cursor + 0.02) { audio.segs.push({ type: 'sil', dur: nowRel - audio.cursor }); audio.cursor = nowRel }
-  audio.segs.push({ type: 'clip', file: clip.file }); audio.cursor += clip.dur
-  await holdWithFrames(page, Math.round(clip.dur * 1000) + 350)
+  await page.evaluate((t) => {
+    const cc = document.getElementById('__cap_cc__')
+    if (cc) cc.textContent = t
+  }, text)
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  const ms = Math.min(5000, Math.max(1400, 500 + words * 250))
+  await holdWithFrames(page, ms)
 }
 
 export function finalizeAudio(outWav, totalVideoSec) {
