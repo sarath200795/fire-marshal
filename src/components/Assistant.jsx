@@ -24,6 +24,19 @@ const ls = {
 const loop = (d) => ({ duration: d, repeat: Infinity, ease: 'easeInOut' })
 const IDLE_SLEEP_MS = 3 * 60 * 1000
 
+// First-run guided tour: Sam walks across the screen and steps through the app.
+// Each step navigates to a page and shows a coach-mark bubble. Runs once per
+// user (tracked in localStorage); replayable from the panel footer.
+const TOUR = [
+  { to: '/app/dashboard', title: "Hi, I'm Sam! 👋", text: "Welcome to Fire Marshal! Let me show you around — it only takes a minute. You can skip anytime." },
+  { to: '/app/dashboard', title: 'Dashboard', text: 'Your live fleet overview. Click any chart slice or KPI card to filter every widget at once.' },
+  { to: '/app/repository', title: 'Repository', text: 'Every extinguisher lives here. Filter and search, print QR labels, and run per-row actions.' },
+  { to: '/app/add', title: 'Add extinguishers', text: 'Add units one at a time here — or use Bulk Upload for many. A QR code is generated on save.' },
+  { to: '/app/refill-due', title: 'The refill workflow', text: 'The left menu tracks each unit’s journey: To Be Refilled → In Process → Refilled & Closed.' },
+  { to: '/app/signages', title: 'Site Safety', text: 'Track safety-signage coverage by site, and run mock drills — all under Site Safety.' },
+  { to: '/app/dashboard', title: "You're all set! 🎉", text: 'Tap me anytime to ask about your fleet, refills or defects. I’m always here to help!' },
+]
+
 const SKIN = '#e8b48f', SKIN_D = '#c98b62', HAT = '#f4b400', HAT_D = '#c98a00'
 const VEST = '#e11d1d', VEST_D = '#9c1414', STRIPE = '#fde047', TROUSER = '#1e293b', SHOE = '#0b1220'
 
@@ -165,6 +178,11 @@ export default function Assistant() {
   const [asleep, setAsleep] = useState(false)
   const [pinned, setPinned] = useState(() => ls.get(`fm:guide:pinned:${uid}`) === '1')
 
+  // Guided onboarding tour — `tour` is the current step index, or null when off.
+  const [tour, setTour] = useState(null)
+  const tourKey = `fm:guide:tour:${uid}`
+  const tourStartedRef = useRef(false)
+
   const savedPos = useMemo(() => { try { return JSON.parse(ls.get(`fm:guide:pos:${uid}`) || 'null') } catch { return null } }, [uid])
   const mx = useMotionValue(savedPos?.x ?? 80)
   const my = useMotionValue(savedPos?.y ?? 0)
@@ -189,6 +207,7 @@ export default function Assistant() {
   // Movement / pose state machine.
   useEffect(() => {
     if (!enabled) return undefined
+    if (tour !== null) return undefined // the tour drives Sam's movement itself
     if (asleep) { setMode('sleep'); return undefined }
     if (open || tip) {
       if (!pinned) { setFacing(-1); animate(mx, Math.max(20, (window.innerWidth || 1000) - 96), { duration: 0.7, ease: 'linear' }); animate(my, 0, { duration: 0.4 }) }
@@ -217,11 +236,14 @@ export default function Assistant() {
     }
     t = setTimeout(step, 1400)
     return () => { alive = false; clearTimeout(t); if (anim?.stop) anim.stop() }
-  }, [enabled, asleep, open, tip, reduced, pinned, mx, my])
+  }, [enabled, asleep, open, tip, reduced, pinned, mx, my, tour])
 
   // Greeting (once per session) → then per-page tips.
   useEffect(() => {
-    if (!enabled || open) return undefined
+    if (!enabled || open || tour !== null) return undefined
+    // Let the first-run guided tour be the welcome — don't flash the greeting
+    // bubble while it's still pending to start.
+    if (uid !== 'anon' && ls.get(`fm:guide:tour:${uid}`) !== '1') return undefined
     const greetKey = `fm:guide:greeted:${uid}`
     const greeted = (() => { try { return sessionStorage.getItem(greetKey) === '1' } catch { return false } })()
     if (!greeted) {
@@ -235,7 +257,59 @@ export default function Assistant() {
     const seenKey = `fm:guide:tip:${uid}:${guide.title}`
     if (ls.get(seenKey) !== '1') { const t = setTimeout(() => setTip({ title: guide.title, text: guide.tips[0] }), 900); return () => clearTimeout(t) }
     return undefined
-  }, [location.pathname, open, uid, guide, enabled])
+  }, [location.pathname, open, uid, guide, enabled, tour])
+
+  // ── Guided tour ───────────────────────────────────────────────────────────
+  const endTour = (completed = true) => {
+    if (completed) ls.set(tourKey, '1')
+    setTour(null)
+    setMode('idle')
+  }
+  const startTour = () => {
+    // Suppress the separate greeting bubble — the tour is the welcome.
+    try { sessionStorage.setItem(`fm:guide:greeted:${uid}`, '1') } catch { /* ignore */ }
+    setOpen(false); setTip(null); setAsleep(false); setTour(0)
+  }
+  const nextTour = () => {
+    if (tour === null) return
+    if (tour < TOUR.length - 1) setTour(tour + 1)
+    else endTour()
+  }
+  const prevTour = () => { if (tour !== null) setTour(Math.max(0, tour - 1)) }
+
+  // Auto-start once, the first time a real signed-in user reaches the app.
+  useEffect(() => {
+    if (!enabled || uid === 'anon' || tourStartedRef.current) return undefined
+    if (ls.get(tourKey) === '1') return undefined
+    const t = setTimeout(() => {
+      if (ls.get(tourKey) === '1') return
+      tourStartedRef.current = true
+      startTour()
+    }, 1500)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, uid])
+
+  // Drive navigation + Sam's walk for the current step.
+  useEffect(() => {
+    if (tour === null) return undefined
+    const step = TOUR[tour]
+    if (!step) return undefined
+    setAsleep(false); lastRef.current = Date.now()
+    if (step.to && location.pathname !== step.to) navigate(step.to)
+    // Walk Sam progressively across the viewport so it reads as a guided stroll.
+    const vw = window.innerWidth || 1000
+    const maxX = Math.max(110, vw - 130)
+    const target = Math.round(20 + (maxX - 20) * (tour / Math.max(1, TOUR.length - 1)))
+    setFacing(target >= mx.get() ? 1 : -1)
+    if (reduced) { mx.set(target); my.set(0); setMode('wave'); return undefined }
+    setMode('walk')
+    const a = animate(mx, target, { duration: 0.9, ease: 'linear' })
+    animate(my, 0, { duration: 0.3 })
+    const t = setTimeout(() => setMode('wave'), 950)
+    return () => { clearTimeout(t); if (a?.stop) a.stop() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tour])
 
   const dismissTip = () => {
     if (tip && !tip.greeting) ls.set(`fm:guide:tip:${uid}:${guide.title}`, '1')
@@ -309,7 +383,7 @@ export default function Assistant() {
         onDragStart={() => { setMode('idle'); lastRef.current = Date.now(); setAsleep(false) }}
         onDragEnd={onDragEnd}
       >
-        <button onClick={() => (open ? setOpen(false) : openPanel())} className="relative block" aria-label="Open Safety Bot">
+        <button onClick={() => (tour !== null ? nextTour() : open ? setOpen(false) : openPanel())} className="relative block" aria-label="Open Safety Bot">
           {reduced ? (
             // 2D drawing: flip horizontally to face the walking direction.
             <div style={{ transform: `scaleX(${facing})` }}>
@@ -329,9 +403,43 @@ export default function Assistant() {
         </button>
       </motion.div>
 
+      {/* Guided onboarding tour coach-mark */}
+      <AnimatePresence>
+        {tour !== null && TOUR[tour] && (
+          <motion.div
+            key={tour}
+            initial={{ opacity: 0, y: 10, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96, transition: { duration: 0.12 } }}
+            transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+            className="fixed bottom-28 left-1/2 z-50 w-80 max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-2xl border border-clay-200 bg-clay-surface p-4 shadow-card"
+          >
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-brand-700">
+                <Sparkles size={13} /> Tour · {tour + 1}/{TOUR.length}
+              </span>
+              <button onClick={() => endTour()} className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-ink-400 hover:bg-clay-100 hover:text-ink-700">
+                Skip <X size={13} />
+              </button>
+            </div>
+            <p className="mt-1.5 text-sm font-bold text-ink-900">{TOUR[tour].title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-600">{TOUR[tour].text}</p>
+            <div className="mt-3.5 flex items-center justify-between gap-2">
+              <button onClick={prevTour} disabled={tour === 0} className="btn-soft px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40">Back</button>
+              <div className="flex items-center gap-1">
+                {TOUR.map((_, i) => (
+                  <span key={i} className={`h-1.5 rounded-full transition-all ${i === tour ? 'w-4 bg-brand-600' : 'w-1.5 bg-clay-200'}`} />
+                ))}
+              </div>
+              <button onClick={nextTour} className="btn-primary px-3 py-1.5 text-xs">{tour === TOUR.length - 1 ? 'Finish' : 'Next'}</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Tip / welcome bubble */}
       <AnimatePresence>
-        {tip && !open && (
+        {tip && !open && tour === null && (
           <motion.div
             initial={{ opacity: 0, y: 10, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -389,6 +497,7 @@ export default function Assistant() {
               <button onClick={setRoam} className="inline-flex items-center gap-1 hover:text-ink-700" disabled={!pinned}>
                 <Move size={12} /> {pinned ? 'Let Sam roam' : 'Drag Sam to pin him'}
               </button>
+              <button onClick={startTour} className="inline-flex items-center gap-1 hover:text-ink-700"><Sparkles size={12} /> Take a tour</button>
               <button onClick={disableGuide} className="inline-flex items-center gap-1 hover:text-ink-700"><EyeOff size={12} /> Hide</button>
             </div>
           </motion.div>
