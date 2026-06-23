@@ -193,7 +193,7 @@ async function holdWithFrames(page, ms) {
 }
 
 // Show a narration line as an on-screen closed-caption (no audio) and hold for
-// a brisk reading time proportional to its length.
+// a brisk reading time proportional to its length. Also records a subtitle cue.
 export async function say(page, text) {
   await page.evaluate((t) => {
     const cc = document.getElementById('__cap_cc__')
@@ -201,7 +201,42 @@ export async function say(page, text) {
   }, text)
   const words = text.trim().split(/\s+/).filter(Boolean).length
   const ms = Math.min(5000, Math.max(1400, 500 + words * 250))
+  const start = subs ? (Date.now() - subs.t0) / 1000 : 0
   await holdWithFrames(page, ms)
+  if (subs) subs.cues.push({ start, end: (Date.now() - subs.t0) / 1000, text })
+}
+
+// ── Subtitles (toggleable .srt / mov_text track) ────────────────────────────
+let subs = null
+export function initSubtitles(t0) { subs = { t0, cues: [] } }
+
+const srtTime = (s) => {
+  const ms = Math.max(0, Math.round(s * 1000))
+  const h = String(Math.floor(ms / 3600000)).padStart(2, '0')
+  const m = String(Math.floor(ms / 60000) % 60).padStart(2, '0')
+  const sec = String(Math.floor(ms / 1000) % 60).padStart(2, '0')
+  const mil = String(ms % 1000).padStart(3, '0')
+  return `${h}:${m}:${sec},${mil}`
+}
+
+export function writeSrt(file) {
+  if (!subs) return null
+  let out = ''
+  subs.cues.forEach((c, i) => {
+    // Avoid zero/negative-length cues and overlap with the next one.
+    const end = Math.max(c.end, c.start + 0.4)
+    out += `${i + 1}\n${srtTime(c.start)} --> ${srtTime(end)}\n${c.text}\n\n`
+  })
+  fs.writeFileSync(file, out)
+  return file
+}
+
+export function embedSubs(videoIn, srtFile, videoOut) {
+  const r = spawnSync(FFMPEG, ['-y', '-i', videoIn, '-i', srtFile,
+    '-c:v', 'copy', '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng',
+    '-movflags', '+faststart', videoOut], { encoding: 'utf8' })
+  if (r.status !== 0) throw new Error('subtitle mux failed: ' + String(r.stderr || '').slice(-400))
+  return videoOut
 }
 
 export function finalizeAudio(outWav, totalVideoSec) {
