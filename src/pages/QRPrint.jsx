@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useReactToPrint } from 'react-to-print'
-import { QRCodeCanvas } from 'qrcode.react'
+import { QRCodeSVG } from 'qrcode.react'
 import { QrCode, Printer, CheckSquare, Square } from 'lucide-react'
 import { PageHeader, EmptyState } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
@@ -45,6 +45,8 @@ export default function QRPrint() {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .qr-print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8mm !important; }
         .qr-print-card { break-inside: avoid; page-break-inside: avoid; min-height: 46mm; box-shadow: none !important; }
+        /* Vector QR at a fixed physical size so it prints crisp and scannable. */
+        .qr-print-code { width: 34mm !important; height: 34mm !important; }
       }
     `,
   })
@@ -100,7 +102,15 @@ export default function QRPrint() {
                 {items.map((e) => (
                   <div key={e.id} className="qr-print-card flex flex-col items-center rounded-2xl border border-ink-200 bg-white p-4 text-center">
                     <div className="mb-1 text-xs font-extrabold uppercase tracking-wide text-brand-600">🔥 Fire Marshal</div>
-                    <QRCodeCanvas value={publicQrUrl(e.qrToken)} size={132} level="M" includeMargin />
+                    <QRCodeSVG
+                      className="qr-print-code"
+                      value={publicQrUrl(e.qrToken)}
+                      size={148}
+                      level="H"
+                      includeMargin
+                      fgColor="#000000"
+                      bgColor="#ffffff"
+                    />
                     <p className="mt-2 text-sm font-extrabold text-ink-900">{e.serialNo || '—'}</p>
                     <p className="text-xs text-ink-500">{e.type} · {e.capacity} · {e.entity}</p>
                     <p className="truncate text-xs text-ink-400">{e.centerName}</p>
