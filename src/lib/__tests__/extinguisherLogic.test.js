@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   deriveStatus, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed,
   isHealthy, severityLabel, fleetSummary, isDeleted, hasQuotation, needsQuotation,
+  toDate,
 } from '../extinguisherLogic'
 import { STATUS } from '../constants'
 
@@ -137,5 +138,26 @@ describe('isDeleted', () => {
     // Pre-soft-delete docs have no deletedAt at all — must still count as active.
     const legacy = { status: STATUS.ACTIVE } // no deletedAt key
     expect(isDeleted(legacy)).toBe(false)
+  })
+})
+
+describe('toDate (guards invalid dates so date-fns never crashes the render)', () => {
+  it('returns null for empty / invalid values', () => {
+    expect(toDate(null)).toBeNull()
+    expect(toDate(undefined)).toBeNull()
+    expect(toDate('not-a-date')).toBeNull()
+    expect(toDate(new Date('nonsense'))).toBeNull()
+  })
+  it('returns null for a Firestore-Timestamp-like object whose toDate() is invalid', () => {
+    // A corrupt timestamp must NOT return an Invalid Date (that would throw
+    // "Invalid time value" in date-fns format() and crash the list render).
+    expect(toDate({ toDate: () => new Date('nonsense') })).toBeNull()
+    expect(toDate({ toDate: () => { throw new Error('boom') } })).toBeNull()
+  })
+  it('passes through valid dates and timestamps', () => {
+    const d = new Date('2027-01-01')
+    expect(toDate(d)).toEqual(d)
+    expect(toDate('2027-01-01')?.getFullYear()).toBe(2027)
+    expect(toDate({ toDate: () => d })).toEqual(d)
   })
 })

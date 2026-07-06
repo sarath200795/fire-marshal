@@ -16,8 +16,17 @@ import {
 export function toDate(value) {
   if (!value) return null
   if (value instanceof Date) return isValid(value) ? value : null
-  // Firestore Timestamp
-  if (typeof value === 'object' && typeof value.toDate === 'function') return value.toDate()
+  // Firestore Timestamp — validate the result; a corrupt timestamp can yield an
+  // Invalid Date, which would later throw "Invalid time value" in date-fns and
+  // crash the whole list render.
+  if (typeof value === 'object' && typeof value.toDate === 'function') {
+    try {
+      const d = value.toDate()
+      return isValid(d) ? d : null
+    } catch {
+      return null
+    }
+  }
   const d = typeof value === 'string' ? parseISO(value) : new Date(value)
   return isValid(d) ? d : null
 }
