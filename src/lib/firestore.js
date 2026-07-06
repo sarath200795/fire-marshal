@@ -7,21 +7,38 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
+  setDoc as _setDoc,
+  addDoc as _addDoc,
+  updateDoc as _updateDoc,
+  deleteDoc as _deleteDoc,
   query,
   where,
   orderBy,
   onSnapshot,
   serverTimestamp,
-  writeBatch,
+  writeBatch as _writeBatch,
   limit,
   startAfter,
   increment,
 } from 'firebase/firestore'
 import { db } from '../firebase'
+
+// ── Read-only demo guard ─────────────────────────────────────────────────────
+// When the demo account is signed in, every Firestore write is blocked
+// client-side so the shared sample data stays pristine for the next visitor.
+// Reads (subscribe*/get*/list*/query*) are untouched. Wrapping the write
+// primitives here means ALL mutations are covered without touching each helper.
+let READ_ONLY = false
+export function setFirestoreReadOnly(v) { READ_ONLY = Boolean(v) }
+export const DEMO_READONLY_MESSAGE = "You're in the read-only demo — sign up to make changes."
+function assertWritable() {
+  if (READ_ONLY) throw new Error(DEMO_READONLY_MESSAGE)
+}
+const setDoc = (...args) => { assertWritable(); return _setDoc(...args) }
+const addDoc = (...args) => { assertWritable(); return _addDoc(...args) }
+const updateDoc = (...args) => { assertWritable(); return _updateDoc(...args) }
+const deleteDoc = (...args) => { assertWritable(); return _deleteDoc(...args) }
+const writeBatch = (...args) => { assertWritable(); return _writeBatch(...args) }
 import { generateQrToken } from './qr'
 import { STATUS, REFILL_DEFECT_KEYS } from './constants'
 import { AUDIT, diffSummary } from './audit'
