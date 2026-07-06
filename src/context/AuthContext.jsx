@@ -14,9 +14,13 @@ import {
   createPendingMember,
   findOrgByName,
   getUserProfile,
+  setFirestoreReadOnly,
 } from '../lib/firestore'
 
 const AuthContext = createContext(null)
+
+// The configured demo account — its session is read-only (see setFirestoreReadOnly).
+const DEMO_EMAIL = (import.meta.env.VITE_DEMO_EMAIL || '').trim().toLowerCase()
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null) // firebase auth user
@@ -108,6 +112,11 @@ export function AuthProvider({ children }) {
     setProfile(null)
   }
 
+  // Demo account → read-only session. Toggle the Firestore write guard whenever
+  // the signed-in identity changes.
+  const isDemo = Boolean(DEMO_EMAIL && user?.email && user.email.toLowerCase() === DEMO_EMAIL)
+  useEffect(() => { setFirestoreReadOnly(isDemo) }, [isDemo])
+
   const value = {
     user,
     profile,
@@ -115,6 +124,7 @@ export function AuthProvider({ children }) {
     isAuthed: Boolean(user),
     isApproved: profile?.status === 'approved',
     isAdmin: profile?.role === 'admin',
+    isDemo,
     orgId: profile?.orgId || null,
     orgName: profile?.orgName || '',
     registerOrganization,

@@ -78,7 +78,8 @@ export function FleetProvider({ children }) {
       // so they appear in the signup dropdown. Once per org per session.
       if (o && o.name && orgIndexedRef.current !== orgId) {
         orgIndexedRef.current = orgId
-        ensureOrgIndex({ id: o.id || orgId, name: o.name })
+        // Fire-and-forget self-heal; ignore failures (e.g. blocked in demo mode).
+        ensureOrgIndex({ id: o.id || orgId, name: o.name }).catch(() => {})
       }
     })
     const u5 = subscribeStats(orgId, setStats)

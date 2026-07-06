@@ -25,6 +25,7 @@ import {
   Clock,
   Signpost,
   Siren,
+  FlaskConical,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -70,7 +71,7 @@ function NavItem({ to, icon: Icon, label, badge, onClick }) {
 }
 
 export default function Layout() {
-  const { profile, orgName, isAdmin, signOut } = useAuth()
+  const { profile, orgName, isAdmin, isDemo, signOut } = useAuth()
   const { pendingReports, pendingUsers, refillDue, inProcess, physicalDefects, physicalOpen, deletedExtinguishers } = useFleet()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -199,6 +200,14 @@ export default function Layout() {
 
       {/* Main column */}
       <div className="lg:pl-64">
+        {/* Demo-mode banner — this session is read-only */}
+        {isDemo && (
+          <div className="no-print flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-center text-xs font-semibold text-white">
+            <FlaskConical size={14} className="shrink-0" />
+            Demo mode — you're exploring sample data. Changes are disabled. Sign up to manage your own fleet.
+          </div>
+        )}
+
         {/* Mobile top bar */}
         <header className="sticky top-0 z-20 flex items-center gap-3 bg-clay-bg/80 px-4 py-3 backdrop-blur lg:hidden">
           <button onClick={() => setMobileOpen(true)} className="rounded-xl p-2 shadow-clay-sm transition hover:bg-clay-100 active:shadow-clay-pressed">
