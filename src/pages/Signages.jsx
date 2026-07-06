@@ -39,6 +39,11 @@ const ferpCovered = (s) => (s.allFloors ? s.totalFloors || 0 : s.floorsCovered |
 // Conditions that mean the signage exists but needs attention.
 const ISSUE_CONDITIONS = ['Faded', 'Damaged', 'Obstructed']
 
+// Every fire extinguisher should have a "Fire Extinguisher Sign", so this
+// column is scored against the number of extinguishers at the site (from the
+// Repository) rather than mere presence.
+const EXT_SIGN_TYPE = 'Fire Extinguisher Sign'
+
 const EMPTY_FILTERS = { search: '', regions: [], entities: [], types: [], conditions: [] }
 
 function Field({ label, children }) {
@@ -100,6 +105,17 @@ export default function Signages() {
     return m
   }, [extinguishers, signages])
 
+  // How many extinguishers each site has (from the Repository) — the target
+  // count of "Fire Extinguisher Sign" records for that site.
+  const extCountBySite = useMemo(() => {
+    const m = {}
+    for (const e of extinguishers) {
+      if (!e.centerName) continue
+      m[e.centerName] = (m[e.centerName] || 0) + 1
+    }
+    return m
+  }, [extinguishers])
+
   // Each site's entity (from its extinguishers, then signage) — for the Entity filter.
   const siteEntity = useMemo(() => {
     const m = {}
@@ -149,6 +165,24 @@ export default function Signages() {
     if (f.regions.length) recs = recs.filter((r) => f.regions.includes(r.region))
     if (f.entities.length) recs = recs.filter((r) => f.entities.includes(r.entity || siteEntity[site]))
     if (f.conditions.length) recs = recs.filter((r) => f.conditions.includes(r.condition))
+
+    // Fire-extinguisher signage is scored against the site's extinguisher count:
+    // recorded signs (sum of quantities, excluding "Missing") vs required (# units).
+    if (type === EXT_SIGN_TYPE) {
+      const required = extCountBySite[site] || 0
+      const present = recs.filter((r) => r.condition !== 'Missing')
+      const recorded = present.reduce((a, r) => a + (Number(r.quantity) || 1), 0)
+      if (recs.length === 0 && required === 0) return { count: 0, status: 'none' }
+      let status
+      if (required === 0) status = recorded > 0 ? 'ok' : 'none'
+      else if (recorded === 0) status = 'missing'
+      else if (recorded < required) status = 'issue'
+      else status = 'ok'
+      if (status === 'ok' && present.some((r) => ISSUE_CONDITIONS.includes(r.condition))) status = 'issue'
+      const label = required > 0 ? `${recorded}/${required}` : (recorded > 0 ? String(recorded) : '—')
+      return { count: recs.length, status, label }
+    }
+
     if (recs.length === 0) return { count: 0, status: 'none' }
     // FERP shows floor coverage (covered / total) rather than a plain count.
     if (isFerp(type)) {
@@ -312,7 +346,7 @@ export default function Signages() {
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-amber-200" /> Needs attention</span>
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-red-200" /> Missing</span>
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-clay-200" /> Not recorded</span>
-            <span className="ml-auto text-ink-400">Tip: click a cell to add a record for that site & sign.</span>
+            <span className="ml-auto text-ink-400">🧯 column shows signs / extinguishers — they should match. Click a cell to manage records.</span>
           </div>
 
           <div className="card overflow-x-auto">
@@ -321,8 +355,13 @@ export default function Signages() {
                 <tr>
                   <th className="sticky left-0 z-10 border-b border-clay-200/60 bg-clay-surface px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500">Site</th>
                   {visibleTypes.map((t) => (
-                    <th key={t} className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500" style={{ minWidth: 78 }}>
-                      {t}
+                    <th
+                      key={t}
+                      title={t === EXT_SIGN_TYPE ? 'Recorded signs / fire extinguishers at the site — these should match' : undefined}
+                      className="border-b border-clay-200/60 bg-clay-surface px-2 py-3 text-center text-[10px] font-semibold leading-tight text-ink-500"
+                      style={{ minWidth: 78 }}
+                    >
+                      {t}{t === EXT_SIGN_TYPE ? ' 🧯' : ''}
                     </th>
                   ))}
                   <th className="border-b border-clay-200/60 bg-clay-surface px-3 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-ink-500" style={{ minWidth: 78 }}>Coverage</th>
@@ -488,6 +527,24 @@ export default function Signages() {
                 <p className="mt-2 text-xs text-ink-400">A Fire Emergency Response Plan should be displayed on every floor.</p>
               </div>
             )}
+            {editing.type === EXT_SIGN_TYPE && editing.centerName.trim() && (() => {
+              const site = editing.centerName.trim()
+              const required = extCountBySite[site] || 0
+              const others = signages
+                .filter((s) => s.centerName === site && s.type === EXT_SIGN_TYPE && s.condition !== 'Missing' && s.id !== editing.id)
+                .reduce((a, s) => a + (Number(s.quantity) || 1), 0)
+              const withThis = others + (Number(editing.quantity) || 0)
+              return (
+                <div className="rounded-xl bg-brand-50 p-3 text-xs text-ink-600">
+                  🧯 <strong>{site}</strong> has <strong>{required}</strong> fire extinguisher(s) in the Repository.
+                  {required > 0 ? (
+                    <> With this record you'll have <strong>{withThis}</strong> sign(s) here — {withThis >= required ? 'that matches the fleet ✅' : `${required - withThis} more needed to match.`}</>
+                  ) : (
+                    <> Add extinguishers to the Repository to track sign coverage.</>
+                  )}
+                </div>
+              )
+            })()}
             <Field label="Notes">
               <textarea className="input" rows={2} value={editing.notes} onChange={set('notes')} />
             </Field>
