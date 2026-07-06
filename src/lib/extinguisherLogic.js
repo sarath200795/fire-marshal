@@ -38,6 +38,23 @@ export function daysUntil(value, today = new Date()) {
   return differenceInCalendarDays(d, today)
 }
 
+// ── Data-quality: classify a date field ──────────────────────────────────────
+// 'ok'      — a valid, parseable date
+// 'missing' — no value recorded at all
+// 'invalid' — a value is present but doesn't parse (e.g. a corrupt import)
+export function dateFieldState(value) {
+  if (value === null || value === undefined || value === '') return 'missing'
+  return toDate(value) ? 'ok' : 'invalid'
+}
+
+/** True when a unit's refill or HPT date is missing or invalid (needs fixing). */
+export function hasDateIssue(ext) {
+  return (
+    dateFieldState(ext?.dateOfNextRefill) !== 'ok' ||
+    dateFieldState(ext?.dateOfNextHPT) !== 'ok'
+  )
+}
+
 /**
  * Derive every flag/category for one extinguisher.
  * Returns an object the rest of the app reads instead of re-computing dates.

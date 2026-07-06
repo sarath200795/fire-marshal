@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText } from 'lucide-react'
+import { Boxes, Download, Trash2, QrCode, AlertTriangle, Filter, Pencil, CheckCircle2, Truck, FileText, CalendarX } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Spinner } from '../components/ui'
 import { TableSkeleton } from '../components/Skeleton'
@@ -12,7 +12,7 @@ import SubmitQuotationModal from '../components/SubmitQuotationModal'
 import ListFilters from '../components/ListFilters'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { deriveStatus, isToBeRefilled, hasQuotation } from '../lib/extinguisherLogic'
+import { deriveStatus, isToBeRefilled, hasQuotation, hasDateIssue } from '../lib/extinguisherLogic'
 import { exportExtinguishers } from '../lib/exporter'
 import { bulkDeleteExtinguishers, markReceivedByVendor, resolveDefects } from '../lib/firestore'
 import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
@@ -28,6 +28,10 @@ export default function Repository() {
   // composite-index combinatorics, every matching row present at once.
   const [filters, setFilters] = useState(emptyFilters())
   const [activeCats, setActiveCats] = useState(new Set())
+  const [onlyIssues, setOnlyIssues] = useState(false)
+
+  // Units with a missing/invalid refill or HPT date — a data-quality problem to fix.
+  const issueCount = useMemo(() => extinguishers.filter(hasDateIssue).length, [extinguishers])
 
   const [selected, setSelected] = useState(new Set())
   const [reportFor, setReportFor] = useState(null)
@@ -47,8 +51,9 @@ export default function Repository() {
         return true
       })
     }
+    if (onlyIssues) list = list.filter(hasDateIssue)
     return list
-  }, [extinguishers, filters, activeCats, today])
+  }, [extinguishers, filters, activeCats, onlyIssues, today])
 
   // ── Inline workflow actions (the realtime fleet listener refreshes rows) ──
   const sendToVendor = async (ext) => {
@@ -112,7 +117,7 @@ export default function Repository() {
     }
   }
 
-  const filtersActive = hasActiveFilters(filters) || activeCats.size > 0
+  const filtersActive = hasActiveFilters(filters) || activeCats.size > 0 || onlyIssues
 
   const countLabel = loading
     ? 'Loading…'
@@ -150,6 +155,15 @@ export default function Repository() {
               </button>
             )
           })}
+          {issueCount > 0 && (
+            <button
+              onClick={() => setOnlyIssues((v) => !v)}
+              className={`chip transition ${onlyIssues ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+              title="Units with a missing or invalid refill/HPT date"
+            >
+              <CalendarX size={13} /> Date issues ({issueCount})
+            </button>
+          )}
         </div>
       </ListFilters>
 
@@ -181,7 +195,7 @@ export default function Repository() {
           title={extinguishers.length ? 'No matches' : 'No extinguishers yet'}
           hint={extinguishers.length ? 'Try adjusting the filters above.' : 'Add one or bulk upload to get started.'}
           action={filtersActive ? (
-            <button className="btn-ghost" onClick={() => { setFilters(emptyFilters()); setActiveCats(new Set()) }}>Clear filters</button>
+            <button className="btn-ghost" onClick={() => { setFilters(emptyFilters()); setActiveCats(new Set()); setOnlyIssues(false) }}>Clear filters</button>
           ) : undefined}
         />
       ) : (
