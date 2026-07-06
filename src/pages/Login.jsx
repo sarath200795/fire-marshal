@@ -104,9 +104,24 @@ export default function Login() {
           <button type="button" onClick={demoLogin} disabled={busy} className="btn-soft w-full">
             <PlayCircle size={16} /> Explore the live demo
           </button>
-          <p className="mt-2 text-center text-xs text-ink-400">
-            No sign-up needed — jump straight into a sample organization.
-          </p>
+          <div className="mt-3 rounded-xl bg-clay-surface p-3 text-xs shadow-clay-inset">
+            <p className="mb-1.5 font-semibold text-ink-600">Demo credentials (read-only)</p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-ink-400">Email</span>
+              <code className="select-all font-mono text-ink-700">{DEMO_EMAIL}</code>
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <span className="text-ink-400">Password</span>
+              <code className="select-all font-mono text-ink-700">{DEMO_PASSWORD}</code>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm({ email: DEMO_EMAIL, password: DEMO_PASSWORD })}
+              className="mt-2 font-semibold text-brand-600 hover:underline"
+            >
+              Fill the form with these
+            </button>
+          </div>
         </>
       )}
 
