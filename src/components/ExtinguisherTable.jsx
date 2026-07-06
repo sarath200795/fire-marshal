@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
+import { AlertTriangle } from 'lucide-react'
 import CategoryBadges from './CategoryBadges'
-import { healthColor, toDate, daysUntil } from '../lib/extinguisherLogic'
+import { healthColor, toDate, daysUntil, dateFieldState, hasDateIssue } from '../lib/extinguisherLogic'
 import { STATUS_LABEL, STATUS_COLOR, REGION_COLORS } from '../lib/constants'
 import { Badge } from './ui'
 
@@ -12,8 +13,22 @@ function fmt(value) {
 
 /** Due-date cell that turns amber/red as the date approaches/passes. */
 function DueCell({ value }) {
-  const d = toDate(value)
-  if (!d) return <span className="text-ink-300">—</span>
+  const state = dateFieldState(value)
+  // Surface data-quality problems instead of a silent "—".
+  if (state === 'invalid') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-bold text-red-600" title="This date is stored in an invalid format — please edit and re-save this unit.">
+        <AlertTriangle size={12} /> Invalid date
+      </span>
+    )
+  }
+  if (state === 'missing') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-600" title="No date recorded — add one to track this unit's due status.">
+        Not set
+      </span>
+    )
+  }
   const days = daysUntil(value)
   let color = '#64748b'
   if (days <= 0) color = '#dc2626'
@@ -106,7 +121,16 @@ export default function ExtinguisherTable({
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    <div className="font-bold text-ink-900">{ext.serialNo || '—'}</div>
+                    <div className="flex items-center gap-1.5 font-bold text-ink-900">
+                      {ext.serialNo || '—'}
+                      {hasDateIssue(ext) && (
+                        <AlertTriangle
+                          size={13}
+                          className="shrink-0 text-amber-500"
+                          title="Missing or invalid refill/HPT date — please review this unit."
+                        />
+                      )}
+                    </div>
                     <div className="text-xs text-ink-500">
                       {ext.type} · {ext.capacity}
                     </div>

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   deriveStatus, isToBeRefilled, isInProcess, isPhysicalDefect, isRefilledClosed,
   isHealthy, severityLabel, fleetSummary, isDeleted, hasQuotation, needsQuotation,
-  toDate,
+  toDate, dateFieldState, hasDateIssue,
 } from '../extinguisherLogic'
 import { STATUS } from '../constants'
 
@@ -159,5 +159,22 @@ describe('toDate (guards invalid dates so date-fns never crashes the render)', (
     expect(toDate(d)).toEqual(d)
     expect(toDate('2027-01-01')?.getFullYear()).toBe(2027)
     expect(toDate({ toDate: () => d })).toEqual(d)
+  })
+})
+
+describe('date-quality flags', () => {
+  it('dateFieldState classifies ok / missing / invalid', () => {
+    expect(dateFieldState('2027-01-01')).toBe('ok')
+    expect(dateFieldState(new Date('2027-01-01'))).toBe('ok')
+    expect(dateFieldState(null)).toBe('missing')
+    expect(dateFieldState(undefined)).toBe('missing')
+    expect(dateFieldState('')).toBe('missing')
+    expect(dateFieldState('garbage')).toBe('invalid')
+    expect(dateFieldState({ toDate: () => new Date('nonsense') })).toBe('invalid')
+  })
+  it('hasDateIssue flags a missing or invalid refill/HPT date', () => {
+    expect(hasDateIssue({ dateOfNextRefill: '2027-01-01', dateOfNextHPT: '2027-06-01' })).toBe(false)
+    expect(hasDateIssue({ dateOfNextRefill: '2027-01-01', dateOfNextHPT: null })).toBe(true)
+    expect(hasDateIssue({ dateOfNextRefill: 'oops', dateOfNextHPT: '2027-06-01' })).toBe(true)
   })
 })
