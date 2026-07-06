@@ -4,8 +4,10 @@ import { useReactToPrint } from 'react-to-print'
 import { QRCodeSVG } from 'qrcode.react'
 import { QrCode, Printer, CheckSquare, Square } from 'lucide-react'
 import { PageHeader, EmptyState } from '../components/ui'
+import ListFilters from '../components/ListFilters'
 import { useFleet } from '../context/FleetContext'
 import { publicQrUrl } from '../lib/qr'
+import { emptyFilters, applyListFilters, hasActiveFilters } from '../lib/listFilter'
 
 export default function QRPrint() {
   const { extinguishers } = useFleet()
@@ -13,11 +15,20 @@ export default function QRPrint() {
   const printRef = useRef(null)
 
   const [selected, setSelected] = useState(() => new Set(location.state?.ids || []))
+  const [filters, setFilters] = useState(emptyFilters())
 
   // If navigated with preselected ids, keep them; otherwise default to all.
   useEffect(() => {
     if (location.state?.ids?.length) setSelected(new Set(location.state.ids))
   }, [location.state])
+
+  // The selector list is narrowed by the filter bar; the selection itself
+  // persists across filter changes so a batch can be built from several filters.
+  const filtered = useMemo(
+    () => applyListFilters(extinguishers, filters),
+    [extinguishers, filters]
+  )
+  const filtersActive = hasActiveFilters(filters)
 
   const items = useMemo(
     () => extinguishers.filter((e) => selected.has(e.id)),
@@ -31,9 +42,15 @@ export default function QRPrint() {
       return next
     })
 
-  const allOn = extinguishers.length > 0 && extinguishers.every((e) => selected.has(e.id))
+  // "Select all" is scoped to the currently filtered rows (union / clear).
+  const allOn = filtered.length > 0 && filtered.every((e) => selected.has(e.id))
   const toggleAll = () =>
-    setSelected(allOn ? new Set() : new Set(extinguishers.map((e) => e.id)))
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allOn) filtered.forEach((e) => next.delete(e.id))
+      else filtered.forEach((e) => next.add(e.id))
+      return next
+    })
 
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
@@ -66,31 +83,49 @@ export default function QRPrint() {
       {extinguishers.length === 0 ? (
         <EmptyState icon={QrCode} title="No extinguishers" hint="Add extinguishers to generate QR codes." />
       ) : (
+        <>
+        {/* Filter bar (client-side) — narrows the selector below */}
+        <div className="no-print">
+          <ListFilters
+            filters={filters}
+            onChange={setFilters}
+            showStatus
+            searchPlaceholder="Search serial, center or type…"
+          />
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-4">
           {/* Selector */}
           <aside className="card h-fit p-4 lg:col-span-1 no-print">
-            <button onClick={toggleAll} className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold hover:bg-ink-50">
+            <button onClick={toggleAll} disabled={!filtered.length} className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold hover:bg-ink-50 disabled:opacity-40">
               {allOn ? <CheckSquare size={16} className="text-brand-500" /> : <Square size={16} className="text-ink-400" />}
-              Select all ({extinguishers.length})
+              Select all ({filtered.length}{filtersActive ? ` of ${extinguishers.length}` : ''})
             </button>
-            <div className="max-h-[60vh] space-y-1 overflow-y-auto">
-              {extinguishers.map((e) => {
-                const on = selected.has(e.id)
-                return (
-                  <button
-                    key={e.id}
-                    onClick={() => toggle(e.id)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${on ? 'bg-brand-50 text-brand-700' : 'hover:bg-ink-50'}`}
-                  >
-                    {on ? <CheckSquare size={15} className="shrink-0 text-brand-500" /> : <Square size={15} className="shrink-0 text-ink-300" />}
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-semibold">{e.serialNo || e.type}</span>{' '}
-                      <span className="text-ink-400">{e.centerName}</span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+            <p className="mb-2 px-2 text-xs text-ink-400">{selected.size} selected for printing</p>
+            {filtered.length === 0 ? (
+              <p className="px-2 py-6 text-center text-sm text-ink-400">
+                No matches. <button className="font-semibold text-brand-600 hover:underline" onClick={() => setFilters(emptyFilters())}>Clear filters</button>
+              </p>
+            ) : (
+              <div className="max-h-[60vh] space-y-1 overflow-y-auto">
+                {filtered.map((e) => {
+                  const on = selected.has(e.id)
+                  return (
+                    <button
+                      key={e.id}
+                      onClick={() => toggle(e.id)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${on ? 'bg-brand-50 text-brand-700' : 'hover:bg-ink-50'}`}
+                    >
+                      {on ? <CheckSquare size={15} className="shrink-0 text-brand-500" /> : <Square size={15} className="shrink-0 text-ink-300" />}
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="font-semibold">{e.serialNo || e.type}</span>{' '}
+                        <span className="text-ink-400">{e.centerName}</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </aside>
 
           {/* Printable grid */}
@@ -120,6 +155,7 @@ export default function QRPrint() {
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   )
