@@ -19,6 +19,14 @@ service cloud.firestore {
       return isApprovedMemberOf(orgId) && myProfile().role == 'admin';
     }
 
+    // ── Read-only demo account ───────────────────────────────────────────────
+    // Paste the demo user's Firebase Auth UID between the quotes to enforce
+    // read-only server-side (it can still READ everything, but every write is
+    // denied). Leave '' to disable. Find the UID in Firebase Console →
+    // Authentication → Users. `notDemo()` is appended to every write rule.
+    function demoUid() { return ''; }
+    function notDemo() { return !(signedIn() && demoUid() != '' && request.auth.uid == demoUid()); }
+
     // Enum allow-lists — MUST mirror src/lib/constants.js
     // (TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, DEFECTS keys).
     function validType(v)     { return v in ['ABC', 'CO2', 'Modular']; }
@@ -46,17 +54,17 @@ service cloud.firestore {
       allow read: if isApprovedMemberOf(orgId);
       // Created during register-org flow (the creator records themselves as admin
       // in the same batch); updated/deleted by org admins only.
-      allow create: if signedIn();
-      allow update, delete: if isAdminOf(orgId);
+      allow create: if signedIn() && notDemo();
+      allow update, delete: if isAdminOf(orgId) && notDemo();
 
       // ── Extinguishers ── (org-scoped, validated)
       // Soft-delete is an UPDATE (sets deletedAt) any member can do; a permanent
       // PURGE is a real delete, restricted to admins.
       match /extinguishers/{extId} {
         allow read: if isApprovedMemberOf(orgId);
-        allow create, update: if isApprovedMemberOf(orgId)
+        allow create, update: if isApprovedMemberOf(orgId) && notDemo()
           && validExtinguisher(request.resource.data);
-        allow delete: if isAdminOf(orgId);
+        allow delete: if isAdminOf(orgId) && notDemo();
       }
 
       // ── Reports / approval queue ──
@@ -65,7 +73,8 @@ service cloud.firestore {
 
         // Public QR visitors (unauthenticated) may submit ONE pending report,
         // tightly validated and bound to a real extinguisher in this org.
-        allow create: if request.resource.data.approvalStatus == 'pending'
+        allow create: if notDemo()
+          && request.resource.data.approvalStatus == 'pending'
           && request.resource.data.source in ['qr', 'portal']
           && request.resource.data.kind in ['defect', 'status_change']
           && request.resource.data.extId is string
@@ -76,42 +85,43 @@ service cloud.firestore {
           && (!('extLabel' in request.resource.data) || request.resource.data.extLabel.size() <= 200);
 
         // Approve / reject is an org member action.
-        allow update, delete: if isApprovedMemberOf(orgId);
+        allow update, delete: if isApprovedMemberOf(orgId) && notDemo();
       }
 
       // ── Audit log ── append-only, immutable. Members read + append; no edits
       // or deletes (even by admins) so the trail can't be tampered with.
       match /auditLogs/{logId} {
         allow read: if isApprovedMemberOf(orgId);
-        allow create: if isApprovedMemberOf(orgId);
+        allow create: if isApprovedMemberOf(orgId) && notDemo();
         allow update, delete: if false;
       }
 
       // ── Meta (stats counters) ── maintained by members' client batches.
       match /meta/{doc} {
         allow read: if isApprovedMemberOf(orgId);
-        allow write: if isApprovedMemberOf(orgId);
+        allow write: if isApprovedMemberOf(orgId) && notDemo();
       }
 
       // ── Safety signage inventory ── site-wise signage records.
       match /signages/{sigId} {
         allow read: if isApprovedMemberOf(orgId);
-        allow create, update: if isApprovedMemberOf(orgId)
+        allow create, update: if isApprovedMemberOf(orgId) && notDemo()
           && request.resource.data.centerName is string
           && request.resource.data.centerName.size() <= 200;
-        allow delete: if isApprovedMemberOf(orgId);
+        allow delete: if isApprovedMemberOf(orgId) && notDemo();
       }
 
       // ── Mock drills / emergency response records ── site-wise drill reports.
       match /mockDrills/{drillId} {
         allow read: if isApprovedMemberOf(orgId);
-        allow create, update: if isApprovedMemberOf(orgId)
+        allow create, update: if isApprovedMemberOf(orgId) && notDemo()
           && request.resource.data.scenario is string;
-        allow delete: if isApprovedMemberOf(orgId);
+        allow delete: if isApprovedMemberOf(orgId) && notDemo();
 
         // Evidence photos (one base64 image per doc), fetched on demand.
         match /photos/{photoId} {
-          allow read, write: if isApprovedMemberOf(orgId);
+          allow read: if isApprovedMemberOf(orgId);
+          allow write: if isApprovedMemberOf(orgId) && notDemo();
         }
       }
     }
@@ -123,8 +133,8 @@ service cloud.firestore {
         request.auth.uid == uid ||
         isAdminOf(resource.data.orgId)
       );
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && (
+      allow create: if signedIn() && request.auth.uid == uid && notDemo();
+      allow update: if signedIn() && notDemo() && (
         request.auth.uid == uid ||
         isAdminOf(resource.data.orgId)
       );
@@ -135,15 +145,15 @@ service cloud.firestore {
     match /orgIndex/{nameLower} {
       allow read: if true;
       // Created in the register-org batch; never updated/deleted from clients.
-      allow create: if signedIn();
+      allow create: if signedIn() && notDemo();
       allow update, delete: if false;
     }
 
     // ── Public QR mirror ── world-readable; writes locked to the owning org.
     match /qr/{token} {
       allow read: if true;
-      allow create: if isApprovedMemberOf(request.resource.data.orgId);
-      allow update, delete: if isApprovedMemberOf(resource.data.orgId);
+      allow create: if isApprovedMemberOf(request.resource.data.orgId) && notDemo();
+      allow update, delete: if isApprovedMemberOf(resource.data.orgId) && notDemo();
     }
   }
 }
