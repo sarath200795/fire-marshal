@@ -200,6 +200,12 @@ export default function Signages() {
     return { count: recs.length, status: 'ok' }
   }
 
+  // A type counts toward a site's coverage when its cell is satisfied. The
+  // fire-extinguisher column requires a FULL match to the fleet (status 'ok'),
+  // not mere presence.
+  const isTypeCovered = (type, cell) =>
+    type === EXT_SIGN_TYPE ? cell.status === 'ok' : cell.count > 0
+
   // Group filtered records by site for the list view.
   const grouped = useMemo(() => {
     const map = new Map()
@@ -263,9 +269,9 @@ export default function Signages() {
       const row = { Site: site, Region: siteRegion[site] || '', Entity: siteEntity[site] || '' }
       let covered = 0
       for (const t of visibleTypes) {
-        const { count } = cellFor(site, t)
-        if (count > 0) covered++
-        row[t] = count
+        const c = cellFor(site, t)
+        if (isTypeCovered(t, c)) covered++
+        row[t] = t === EXT_SIGN_TYPE && c.label ? c.label : c.count
       }
       row.Coverage = `${covered}/${visibleTypes.length}`
       return row
@@ -372,7 +378,7 @@ export default function Signages() {
                   let covered = 0
                   const cells = visibleTypes.map((t) => {
                     const c = cellFor(site, t)
-                    if (c.count > 0) covered++
+                    if (isTypeCovered(t, c)) covered++
                     return { t, ...c }
                   })
                   const pct = Math.round((covered / visibleTypes.length) * 100)
