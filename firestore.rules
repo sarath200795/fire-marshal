@@ -20,12 +20,17 @@ service cloud.firestore {
     }
 
     // ── Read-only demo account ───────────────────────────────────────────────
-    // Paste the demo user's Firebase Auth UID between the quotes to enforce
-    // read-only server-side (it can still READ everything, but every write is
-    // denied). Leave '' to disable. Find the UID in Firebase Console →
-    // Authentication → Users. `notDemo()` is appended to every write rule.
-    function demoUid() { return ''; }
-    function notDemo() { return !(signedIn() && demoUid() != '' && request.auth.uid == demoUid()); }
+    // The demo account can READ everything but every write is denied. Matched by
+    // email (same value as VITE_DEMO_EMAIL). Set '' to disable. `notDemo()` is
+    // appended to every write rule below.
+    function demoEmail() { return 'demo@email.com'; }
+    function isDemoUser() {
+      return signedIn()
+        && demoEmail() != ''
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() == demoEmail();
+    }
+    function notDemo() { return !isDemoUser(); }
 
     // Enum allow-lists — MUST mirror src/lib/constants.js
     // (TYPES, CAPACITIES, ENTITIES, REGIONS, STATUS, DEFECTS keys).
