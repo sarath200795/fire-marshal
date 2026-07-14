@@ -36,6 +36,8 @@ const TOUR = [
   { to: '/app/refill-due', title: 'The refill workflow', text: 'The left menu tracks each unit’s journey: To Be Refilled → In Process → Refilled & Closed.' },
   { to: '/app/signages', title: 'Safety signage', text: 'Track safety-signage coverage across every site, and export the matrix to Excel.' },
   { to: '/app/mock-drills', title: 'Mock drills & incidents', text: 'Log fire drills and real emergencies here — run a scenario checklist, record teams & incident commanders, and get a scored PDF report.' },
+  { to: '/app/aed-dashboard', title: 'AED tracking', text: 'Track defibrillators too — battery & pad expiry, inspections, QR codes and readiness, all in the AED dashboard and repository.' },
+  { to: '/app/fas-dashboard', title: 'Fire alarm (FAS)', text: 'Manage your fire-alarm devices — panels, detectors, call points — with service due dates, faults and QR codes in the FAS dashboard and repository.' },
   { to: '/app/dashboard', title: "You're all set! 🎉", text: 'Tap me anytime to ask about your fleet, refills, defects or drills. I’m always here to help!' },
 ]
 
