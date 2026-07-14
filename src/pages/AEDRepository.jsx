@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
-import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
@@ -149,6 +150,7 @@ export default function AEDRepository() {
   return (
     <div>
       <PageHeader title="AED Repository" subtitle={`${visible.length}${anyActive ? ` of ${aeds.length}` : ''} defibrillator${visible.length === 1 ? '' : 's'}`} icon={HeartPulse}>
+        <Link to="/app/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
         <button className="btn-soft" onClick={doExport} disabled={!aeds.length}><Download size={16} /> Export</button>
         <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add AED</button>
       </PageHeader>

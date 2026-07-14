@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
-import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -136,6 +137,7 @@ export default function FASRepository() {
   return (
     <div>
       <PageHeader title="FAS Repository" subtitle={`${visible.length}${anyActive ? ` of ${fas.length}` : ''} fire-alarm device${visible.length === 1 ? '' : 's'}`} icon={BellRing}>
+        <Link to="/app/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
         <button className="btn-soft" onClick={doExport} disabled={!fas.length}><Download size={16} /> Export</button>
         <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add device</button>
       </PageHeader>

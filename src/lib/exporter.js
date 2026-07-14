@@ -1,7 +1,10 @@
 // xlsx helpers: bulk-upload template, parsing uploads, and exporting lists.
 import * as XLSX from 'xlsx'
 import { format } from 'date-fns'
-import { BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS_LABEL } from './constants'
+import {
+  BULK_COLUMNS, TYPES, CAPACITIES, ENTITIES, REGIONS, DEFAULT_REGION, STATUS_LABEL,
+  FAS_DEVICE_TYPES, AED_STATUS, AED_STATUS_LABEL, FAS_STATUS, FAS_STATUS_LABEL,
+} from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
 
 // Normalize a cell value (Date or string) to a yyyy-MM-dd string.
@@ -40,6 +43,84 @@ function bookFromRows(rows, sheetName = 'Extinguishers') {
 /** Generic one-sheet export of an array of flat {column: value} row objects. */
 export function exportRows(rows, sheetName = 'Sheet1', filename = 'export.xlsx') {
   downloadWorkbook(bookFromRows(rows, sheetName), filename)
+}
+
+// ── AED / FAS bulk upload ─────────────────────────────────────────────────────
+export const AED_BULK_COLUMNS = ['Asset ID', 'Brand', 'Model', 'Site', 'Region', 'Entity', 'Location', 'Status', 'Install Date', 'Battery Expiry', 'Pad Expiry', 'Last Inspection', 'Next Inspection', 'Notes']
+export const FAS_BULK_COLUMNS = ['Device ID', 'Device Type', 'Zone', 'Site', 'Region', 'Entity', 'Location', 'Status', 'Install Date', 'Last Service', 'Next Service', 'AMC Vendor', 'Notes']
+
+const ASSET_CFG = {
+  aed: {
+    columns: AED_BULK_COLUMNS, sheet: 'AED', file: 'fire-marshal-aed-template.xlsx',
+    statuses: AED_STATUS, statusLabels: AED_STATUS_LABEL, defaultStatus: AED_STATUS.READY,
+    example: { 'Asset ID': 'AED-001', Brand: 'Philips', Model: 'HeartStart FRx', Site: 'Tower B - Lobby', Region: 'North', Entity: '1P', Location: 'Reception cabinet', Status: 'Ready', 'Install Date': '2024-01-15', 'Battery Expiry': '2027-01-15', 'Pad Expiry': '2026-01-15', 'Last Inspection': '2025-01-15', 'Next Inspection': '2026-01-15', Notes: '' },
+  },
+  fas: {
+    columns: FAS_BULK_COLUMNS, sheet: 'FAS', file: 'fire-marshal-fas-template.xlsx',
+    statuses: FAS_STATUS, statusLabels: FAS_STATUS_LABEL, defaultStatus: FAS_STATUS.OPERATIONAL,
+    example: { 'Device ID': 'MCP-03', 'Device Type': 'Manual Call Point', Zone: 'Zone 4', Site: 'Tower B', Region: 'North', Entity: '1P', Location: '3rd floor lobby', Status: 'Operational', 'Install Date': '2024-01-15', 'Last Service': '2025-01-15', 'Next Service': '2026-01-15', 'AMC Vendor': 'Acme Fire Systems', Notes: '' },
+  },
+}
+
+// Resolve a status cell to a valid key (accepts the key OR the label; blank → default).
+function matchStatus(v, cfg) {
+  const s = String(v ?? '').trim().toLowerCase()
+  if (!s) return cfg.defaultStatus
+  for (const key of Object.values(cfg.statuses)) {
+    if (s === key || s === (cfg.statusLabels[key] || '').toLowerCase()) return key
+  }
+  return cfg.defaultStatus
+}
+
+/** Download an AED or FAS bulk-upload template. */
+export function downloadAssetTemplate(kind) {
+  const cfg = ASSET_CFG[kind]
+  const ws = XLSX.utils.json_to_sheet([cfg.example], { header: cfg.columns })
+  ws['!cols'] = cfg.columns.map(() => ({ wch: 18 }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, cfg.sheet)
+  downloadWorkbook(wb, cfg.file)
+}
+
+/** Parse an AED/FAS upload → { valid, errors, total }. */
+export async function parseAssetUpload(kind, file) {
+  const cfg = ASSET_CFG[kind]
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true })
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+  const valid = []
+  const errors = []
+  const S = (r, k) => String(r[k] ?? '').trim()
+
+  rows.forEach((r, idx) => {
+    const rowNum = idx + 2
+    const region = S(r, 'Region')
+    const entity = S(r, 'Entity')
+    const data = kind === 'aed'
+      ? {
+          assetId: S(r, 'Asset ID'), brand: S(r, 'Brand'), model: S(r, 'Model'), centerName: S(r, 'Site'),
+          region, entity, location: S(r, 'Location'), status: matchStatus(r['Status'], cfg),
+          installDate: toISODate(r['Install Date']), batteryExpiry: toISODate(r['Battery Expiry']),
+          padExpiry: toISODate(r['Pad Expiry']), lastInspection: toISODate(r['Last Inspection']),
+          nextInspection: toISODate(r['Next Inspection']), notes: S(r, 'Notes'),
+        }
+      : {
+          deviceId: S(r, 'Device ID'), deviceType: S(r, 'Device Type') || 'Other', zone: S(r, 'Zone'),
+          centerName: S(r, 'Site'), region, entity, location: S(r, 'Location'), status: matchStatus(r['Status'], cfg),
+          installDate: toISODate(r['Install Date']), lastService: toISODate(r['Last Service']),
+          nextService: toISODate(r['Next Service']), amcVendor: S(r, 'AMC Vendor'), notes: S(r, 'Notes'),
+        }
+
+    const issues = []
+    if (!data.centerName) issues.push('Site is required')
+    if (region && !REGIONS.includes(region)) issues.push(`Region must be one of ${REGIONS.join(', ')}`)
+    if (entity && !ENTITIES.includes(entity)) issues.push(`Entity must be one of ${ENTITIES.join(', ')}`)
+    if (kind === 'fas' && data.deviceType && !FAS_DEVICE_TYPES.includes(data.deviceType)) issues.push(`Device Type must be one of ${FAS_DEVICE_TYPES.join(', ')}`)
+
+    if (issues.length) errors.push({ row: rowNum, data, issues })
+    else valid.push(data)
+  })
+  return { valid, errors, total: rows.length }
 }
 
 /** Download an .xlsx template with the expected columns + one example row. */
