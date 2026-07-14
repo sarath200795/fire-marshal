@@ -59,6 +59,10 @@ const signageCol = (orgId) => collection(db, 'organizations', orgId, 'signages')
 const signageRef = (orgId, id) => doc(db, 'organizations', orgId, 'signages', id)
 const drillCol = (orgId) => collection(db, 'organizations', orgId, 'mockDrills')
 const drillRef = (orgId, id) => doc(db, 'organizations', orgId, 'mockDrills', id)
+const aedCol = (orgId) => collection(db, 'organizations', orgId, 'aeds')
+const aedRef = (orgId, id) => doc(db, 'organizations', orgId, 'aeds', id)
+const fasCol = (orgId) => collection(db, 'organizations', orgId, 'fas')
+const fasRef = (orgId, id) => doc(db, 'organizations', orgId, 'fas', id)
 // Mock-drill evidence photos live in a per-drill subcollection (one doc each, ≤~700 KB)
 // so the live drill list never carries the image blobs.
 const drillPhotoCol = (orgId, drillId) => collection(db, 'organizations', orgId, 'mockDrills', drillId, 'photos')
@@ -915,4 +919,97 @@ export async function deleteMockDrill(orgId, id, actor, label) {
   }
   await deleteDoc(drillRef(orgId, id))
   await logAudit(orgId, actor, 'mockdrill.delete', { target: 'mockdrill', targetId: id, targetLabel: label || '' })
+}
+
+// ── AED (Automated External Defibrillator) inventory (org-scoped) ──────────────
+export function subscribeAeds(orgId, cb) {
+  const q = query(aedCol(orgId), orderBy('createdAt', 'desc'))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => console.warn('[Fire Marshal] AED subscribe failed:', err?.message || err)
+  )
+}
+
+const cleanAed = (d) => ({
+  assetId: (d.assetId || '').trim(),
+  brand: (d.brand || '').trim(),
+  model: (d.model || '').trim(),
+  centerName: (d.centerName || '').trim(),
+  region: d.region || '',
+  entity: d.entity || '',
+  location: (d.location || '').trim(),
+  status: d.status || 'ready',
+  installDate: d.installDate || '',
+  batteryExpiry: d.batteryExpiry || '',
+  padExpiry: d.padExpiry || '',
+  lastInspection: d.lastInspection || '',
+  nextInspection: d.nextInspection || '',
+  notes: (d.notes || '').trim(),
+})
+
+export async function addAed(orgId, data, actor) {
+  const ref = await addDoc(aedCol(orgId), { ...cleanAed(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'aed.create', {
+    target: 'aed', targetId: ref.id,
+    targetLabel: `${data.assetId || 'AED'} @ ${data.centerName}`,
+    summary: `AED ${data.assetId || ''} added @ ${data.centerName}`,
+  })
+  return ref.id
+}
+
+export async function updateAed(orgId, id, updates, actor) {
+  await updateDoc(aedRef(orgId, id), { ...cleanAed(updates), updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'aed.update', { target: 'aed', targetId: id, targetLabel: `${updates.assetId || 'AED'} @ ${updates.centerName}`, summary: 'AED updated' })
+}
+
+export async function deleteAed(orgId, id, actor, label) {
+  await deleteDoc(aedRef(orgId, id))
+  await logAudit(orgId, actor, 'aed.delete', { target: 'aed', targetId: id, targetLabel: label || '' })
+}
+
+// ── FAS (Fire Alarm System) device inventory (org-scoped) ─────────────────────
+export function subscribeFas(orgId, cb) {
+  const q = query(fasCol(orgId), orderBy('createdAt', 'desc'))
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => console.warn('[Fire Marshal] FAS subscribe failed:', err?.message || err)
+  )
+}
+
+const cleanFas = (d) => ({
+  deviceId: (d.deviceId || '').trim(),
+  deviceType: d.deviceType || 'Other',
+  zone: (d.zone || '').trim(),
+  centerName: (d.centerName || '').trim(),
+  region: d.region || '',
+  entity: d.entity || '',
+  location: (d.location || '').trim(),
+  status: d.status || 'operational',
+  installDate: d.installDate || '',
+  lastService: d.lastService || '',
+  nextService: d.nextService || '',
+  amcVendor: (d.amcVendor || '').trim(),
+  notes: (d.notes || '').trim(),
+})
+
+export async function addFas(orgId, data, actor) {
+  const ref = await addDoc(fasCol(orgId), { ...cleanFas(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'fas.create', {
+    target: 'fas', targetId: ref.id,
+    targetLabel: `${data.deviceId || data.deviceType} @ ${data.centerName}`,
+    summary: `FAS ${data.deviceType} added @ ${data.centerName}`,
+  })
+  return ref.id
+}
+
+export async function updateFas(orgId, id, updates, actor) {
+  await updateDoc(fasRef(orgId, id), { ...cleanFas(updates), updatedAt: serverTimestamp() })
+  await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: 'FAS device updated' })
+}
+
+export async function deleteFas(orgId, id, actor, label) {
+  await deleteDoc(fasRef(orgId, id))
+  await logAudit(orgId, actor, 'fas.delete', { target: 'fas', targetId: id, targetLabel: label || '' })
 }

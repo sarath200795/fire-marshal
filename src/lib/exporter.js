@@ -37,6 +37,11 @@ function bookFromRows(rows, sheetName = 'Extinguishers') {
   return wb
 }
 
+/** Generic one-sheet export of an array of flat {column: value} row objects. */
+export function exportRows(rows, sheetName = 'Sheet1', filename = 'export.xlsx') {
+  downloadWorkbook(bookFromRows(rows, sheetName), filename)
+}
+
 /** Download an .xlsx template with the expected columns + one example row. */
 export function downloadTemplate() {
   const example = {

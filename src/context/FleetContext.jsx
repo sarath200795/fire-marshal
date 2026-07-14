@@ -9,6 +9,8 @@ import {
   subscribeAuditLogs,
   subscribeSignages,
   subscribeMockDrills,
+  subscribeAeds,
+  subscribeFas,
   backfillDeletedAt,
   ensureOrgIndex,
 } from '../lib/firestore'
@@ -40,6 +42,8 @@ export function FleetProvider({ children }) {
   const [auditLogs, setAuditLogs] = useState([])
   const [signages, setSignages] = useState([])
   const [mockDrills, setMockDrills] = useState([])
+  const [aeds, setAeds] = useState([])
+  const [fas, setFas] = useState([])
   const [loading, setLoading] = useState(true)
   // Run the deletedAt backfill at most once per org per session.
   const backfilledRef = useRef(null)
@@ -86,6 +90,8 @@ export function FleetProvider({ children }) {
     const u6 = subscribeAuditLogs(orgId, setAuditLogs)
     const u7 = subscribeSignages(orgId, setSignages)
     const u8 = subscribeMockDrills(orgId, setMockDrills)
+    const u9 = subscribeAeds(orgId, setAeds)
+    const u10 = subscribeFas(orgId, setFas)
     return () => {
       u1()
       u2()
@@ -95,6 +101,8 @@ export function FleetProvider({ children }) {
       u6()
       u7()
       u8()
+      u9()
+      u10()
     }
   }, [orgId])
 
@@ -113,6 +121,8 @@ export function FleetProvider({ children }) {
           ...active.map((e) => e.centerName),
           ...signages.map((s) => s.centerName),
           ...mockDrills.map((d) => d.centerName),
+          ...aeds.map((a) => a.centerName),
+          ...fas.map((a) => a.centerName),
         ].filter((c) => c && c.trim())
       )
     ).sort((a, b) => a.localeCompare(b))
@@ -123,6 +133,8 @@ export function FleetProvider({ children }) {
       auditLogs,
       signages,
       mockDrills,
+      aeds,
+      fas,
       sites,
       extinguishers: active,
       deletedExtinguishers,
@@ -141,7 +153,7 @@ export function FleetProvider({ children }) {
       physicalOpen: defectLog.open,
       physicalClosed: defectLog.closed,
     }
-  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, loading])
+  }, [extinguishers, reports, users, org, stats, auditLogs, signages, mockDrills, aeds, fas, loading])
 
   return <FleetContext.Provider value={value}>{children}</FleetContext.Provider>
 }

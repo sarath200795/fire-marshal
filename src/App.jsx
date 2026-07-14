@@ -31,6 +31,10 @@ const PhysicalDefectLog = lazy(() => import('./pages/PhysicalDefectLog'))
 const Closed = lazy(() => import('./pages/Closed'))
 const Approvals = lazy(() => import('./pages/Approvals'))
 const Users = lazy(() => import('./pages/Users'))
+const AEDRepository = lazy(() => import('./pages/AEDRepository'))
+const AEDDashboard = lazy(() => import('./pages/AEDDashboard'))
+const FASRepository = lazy(() => import('./pages/FASRepository'))
+const FASDashboard = lazy(() => import('./pages/FASDashboard'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
 const RecycleBin = lazy(() => import('./pages/RecycleBin'))
 
@@ -75,6 +79,10 @@ export default function App() {
             <Route path="repository" element={<Repository />} />
             <Route path="signages" element={<Signages />} />
             <Route path="mock-drills" element={<MockDrills />} />
+            <Route path="aed" element={<AEDRepository />} />
+            <Route path="aed-dashboard" element={<AEDDashboard />} />
+            <Route path="fas" element={<FASRepository />} />
+            <Route path="fas-dashboard" element={<FASDashboard />} />
             <Route path="add" element={<AddExtinguisher />} />
             <Route path="bulk-upload" element={<BulkUpload />} />
             <Route path="qr-print" element={<QRPrint />} />

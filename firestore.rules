@@ -116,6 +116,24 @@ service cloud.firestore {
         allow delete: if isApprovedMemberOf(orgId) && notDemo();
       }
 
+      // ── AED inventory ── site-wise defibrillator records.
+      match /aeds/{aedId} {
+        allow read: if isApprovedMemberOf(orgId);
+        allow create, update: if isApprovedMemberOf(orgId) && notDemo()
+          && request.resource.data.centerName is string
+          && request.resource.data.centerName.size() <= 200;
+        allow delete: if isApprovedMemberOf(orgId) && notDemo();
+      }
+
+      // ── FAS (fire alarm system) device inventory ──
+      match /fas/{fasId} {
+        allow read: if isApprovedMemberOf(orgId);
+        allow create, update: if isApprovedMemberOf(orgId) && notDemo()
+          && request.resource.data.centerName is string
+          && request.resource.data.centerName.size() <= 200;
+        allow delete: if isApprovedMemberOf(orgId) && notDemo();
+      }
+
       // ── Mock drills / emergency response records ── site-wise drill reports.
       match /mockDrills/{drillId} {
         allow read: if isApprovedMemberOf(orgId);
