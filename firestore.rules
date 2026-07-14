@@ -81,13 +81,31 @@ service cloud.firestore {
         allow create: if notDemo()
           && request.resource.data.approvalStatus == 'pending'
           && request.resource.data.source in ['qr', 'portal']
-          && request.resource.data.kind in ['defect', 'status_change']
-          && request.resource.data.extId is string
-          && exists(/databases/$(database)/documents/organizations/$(orgId)/extinguishers/$(request.resource.data.extId))
-          && (request.resource.data.kind != 'defect' || validDefect(request.resource.data.defectType))
-          && (request.resource.data.kind != 'status_change' || validStatus(request.resource.data.newStatus))
-          && (!('note' in request.resource.data) || request.resource.data.note.size() <= 500)
-          && (!('extLabel' in request.resource.data) || request.resource.data.extLabel.size() <= 200);
+          && (
+            // Extinguisher defect / status-change report.
+            (
+              request.resource.data.kind in ['defect', 'status_change']
+              && request.resource.data.extId is string
+              && exists(/databases/$(database)/documents/organizations/$(orgId)/extinguishers/$(request.resource.data.extId))
+              && (request.resource.data.kind != 'defect' || validDefect(request.resource.data.defectType))
+              && (request.resource.data.kind != 'status_change' || validStatus(request.resource.data.newStatus))
+              && (!('note' in request.resource.data) || request.resource.data.note.size() <= 500)
+              && (!('extLabel' in request.resource.data) || request.resource.data.extLabel.size() <= 200)
+            )
+            ||
+            // AED / FAS asset-defect report (bound to a real asset in this org).
+            (
+              request.resource.data.kind == 'asset_defect'
+              && request.resource.data.assetKind in ['aed', 'fas']
+              && request.resource.data.assetRefId is string
+              && request.resource.data.defect is string
+              && request.resource.data.defect.size() <= 100
+              && (
+                (request.resource.data.assetKind == 'aed' && exists(/databases/$(database)/documents/organizations/$(orgId)/aeds/$(request.resource.data.assetRefId)))
+                || (request.resource.data.assetKind == 'fas' && exists(/databases/$(database)/documents/organizations/$(orgId)/fas/$(request.resource.data.assetRefId)))
+              )
+            )
+          );
 
         // Approve / reject is an org member action.
         allow update, delete: if isApprovedMemberOf(orgId) && notDemo();

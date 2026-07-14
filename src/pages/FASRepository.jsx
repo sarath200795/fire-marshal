@@ -1,17 +1,35 @@
 import { useMemo, useState, useEffect } from 'react'
-import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download } from 'lucide-react'
+import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addFas, updateFas, deleteFas } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
+import { publicQrUrl } from '../lib/qr'
 import { dueState, fasColor } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
 const fmtDate = (v) => { const d = toDate(v); return d ? format(d, 'dd MMM yyyy') : String(v || '') }
+
+function useSiteMeta() {
+  const { extinguishers, signages, aeds, fas } = useFleet()
+  return useMemo(() => {
+    const m = {}
+    const add = (rows) => rows.forEach((r) => {
+      const s = r.centerName
+      if (!s) return
+      if (!m[s]) m[s] = { region: '', entity: '' }
+      if (!m[s].region && r.region) m[s].region = r.region
+      if (!m[s].entity && r.entity) m[s].entity = r.entity
+    })
+    add(extinguishers || []); add(signages || []); add(aeds || []); add(fas || [])
+    return m
+  }, [extinguishers, signages, aeds, fas])
+}
 const EMPTY = {
   deviceId: '', deviceType: 'Control Panel', zone: '', centerName: '', region: '', entity: '', location: '',
   status: FAS_STATUS.OPERATIONAL, installDate: '', lastService: '', nextService: '', amcVendor: '', notes: '',
@@ -39,15 +57,24 @@ function DateCell({ value }) {
 }
 
 export default function FASRepository() {
-  const { orgId, profile } = useAuth()
+  const { orgId, orgName, profile } = useAuth()
   const { fas, sites, loading } = useFleet()
+  const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
 
   const [f, setF] = useState({ search: '', regions: [], types: [], statuses: [] })
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState(null)
   const [removing, setRemoving] = useState(null)
+  const [qrFor, setQrFor] = useState(null)
+  const [serviceFor, setServiceFor] = useState(null)
+  const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const onSite = (v) => setEditing((e) => {
+    const meta = siteMeta[v.trim()]
+    return { ...e, centerName: v, ...(meta ? { region: meta.region || e.region, entity: meta.entity || e.entity } : {}) }
+  })
 
   const toggle = (field, v) => setF((p) => ({ ...p, [field]: p[field].includes(v) ? p[field].filter((x) => x !== v) : [...p[field], v] }))
   const anyActive = f.search || f.regions.length || f.types.length || f.statuses.length
@@ -75,16 +102,25 @@ export default function FASRepository() {
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
-      if (editing.id) { await updateFas(orgId, editing.id, editing, actor); toast.success('FAS device updated') }
-      else { await addFas(orgId, editing, actor); toast.success('FAS device added') }
+      if (editing.id) { await updateFas(orgId, orgName, editing.id, editing, actor); toast.success('FAS device updated') }
+      else { await addFas(orgId, orgName, editing, actor); toast.success('FAS device added') }
       setEditing(null)
     } catch (err) { toast.error(err.message) } finally { setBusy(false) }
   }
   const confirmDelete = async () => {
     try {
-      await deleteFas(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.deviceId || removing.deviceType} @ ${removing.centerName}`)
+      await deleteFas(orgId, removing.id, removing.qrToken, { uid: profile?.uid, name: profile?.name }, `${removing.deviceId || removing.deviceType} @ ${removing.centerName}`)
       toast.success('FAS device deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+  }
+  const openService = (a) => { setServiceFor(a); setNextDate(a.nextService || '') }
+  const confirmService = async () => {
+    setBusy(true)
+    try {
+      await serviceFas(orgId, orgName, serviceFor, nextDate, { uid: profile?.uid, name: profile?.name })
+      toast.success('Service logged')
+      setServiceFor(null)
+    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
   }
   const doExport = () => {
     if (!visible.length) return toast.error('Nothing to export')
@@ -152,6 +188,8 @@ export default function FASRepository() {
                     <td className="px-4 py-3"><Badge color={FAS_STATUS_COLOR[a.status] || '#64748b'}>{FAS_STATUS_LABEL[a.status] || a.status}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
+                        <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log service"><Wrench size={14} /></button>
+                        {a.qrToken && <button className="btn-soft px-2 py-1.5" onClick={() => setQrFor(a)} title="View QR code"><QrCode size={15} /></button>}
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>
@@ -181,7 +219,7 @@ export default function FASRepository() {
               <Field label="Device ID / Tag"><input className="input" value={editing.deviceId} onChange={set('deviceId')} placeholder="e.g. MCP-03" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
               <Field label="Site / Center name *">
-                <input className="input" list="fas-sites" value={editing.centerName} onChange={set('centerName')} placeholder="e.g. Tower B" required />
+                <input className="input" list="fas-sites" value={editing.centerName} onChange={(e) => onSite(e.target.value)} placeholder="e.g. Tower B" required />
                 <datalist id="fas-sites">{sites.map((s) => <option key={s} value={s} />)}</datalist>
               </Field>
               <Field label="Zone / Loop"><input className="input" value={editing.zone} onChange={set('zone')} placeholder="e.g. Zone 4" /></Field>
@@ -209,6 +247,30 @@ export default function FASRepository() {
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
+      </Modal>
+
+      <Modal open={!!qrFor} onClose={() => setQrFor(null)} title={`QR — ${qrFor?.deviceId || qrFor?.deviceType || 'FAS'}`}>
+        {qrFor && (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="rounded-2xl bg-white p-4 shadow-clay"><QRCodeSVG value={publicQrUrl(qrFor.qrToken)} size={200} level="H" includeMargin /></div>
+            <p className="text-sm font-bold text-ink-900">{qrFor.deviceId || qrFor.deviceType} · {qrFor.centerName}</p>
+            <p className="break-all text-xs text-ink-400">{publicQrUrl(qrFor.qrToken)}</p>
+            <p className="text-xs text-ink-500">Scanning opens a public status page where anyone can report a defect.</p>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!serviceFor} onClose={() => setServiceFor(null)} title="Log service">
+        {serviceFor && (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-600">Record a service for <strong>{serviceFor.deviceId || serviceFor.deviceType}</strong> @ <strong>{serviceFor.centerName}</strong>. Last service is set to today and status to <strong>Operational</strong>.</p>
+            <Field label="Next service due"><input type="date" className="input" value={nextDate} onChange={(e) => setNextDate(e.target.value)} /></Field>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setServiceFor(null)}>Cancel</button>
+              <button className="btn-primary" onClick={confirmService} disabled={busy}>{busy ? <Spinner size={16} /> : 'Log service'}</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

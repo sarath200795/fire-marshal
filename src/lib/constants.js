@@ -142,6 +142,15 @@ export const AED_STATUS_COLOR = {
   [AED_STATUS.OUT_OF_SERVICE]: '#dc2626',
 }
 
+// Defects a public QR scanner can report against an AED.
+export const AED_DEFECTS = [
+  'Battery Issue',
+  'Lock Issue',
+  'Pads Expired',
+  'Pads Missing',
+  'Battery Expired / Discharged',
+]
+
 // ── FAS (Fire Alarm System) device inventory ─────────────────────────────────
 export const FAS_DEVICE_TYPES = [
   'Control Panel',
@@ -168,6 +177,19 @@ export const FAS_STATUS_COLOR = {
   [FAS_STATUS.SERVICE_DUE]: '#f59e0b',
   [FAS_STATUS.FAULTY]: '#dc2626',
 }
+
+// Defects a public QR scanner can report against a FAS device.
+export const FAS_DEFECTS = [
+  'Battery Discharged',
+  'UPS / Power Issue',
+  'System Unhealthy',
+  'Smoke Detector Not Working',
+  'Hooter Not Working',
+  'Isolated Zone',
+]
+
+// Asset-kind → its public-reportable defect list.
+export const ASSET_DEFECTS = { aed: AED_DEFECTS, fas: FAS_DEFECTS }
 
 // Columns used for xlsx bulk upload template + export
 export const BULK_COLUMNS = [

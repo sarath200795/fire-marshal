@@ -6,11 +6,20 @@ import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Badge } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { useAuth } from '../context/AuthContext'
-import { approveReport, rejectReport } from '../lib/firestore'
+import { approveReport, rejectReport, decideAssetReport } from '../lib/firestore'
 import { DEFECT_BY_KEY, STATUS_LABEL, STATUS_COLOR, REFILL_DEFECT_KEYS } from '../lib/constants'
 import { toDate } from '../lib/extinguisherLogic'
 
 function reportMeta(r) {
+  if (r.kind === 'asset_defect') {
+    const isFas = r.assetKind === 'fas'
+    return {
+      icon: AlertTriangle,
+      title: r.defect || 'Asset defect',
+      color: '#dc2626',
+      detail: `${isFas ? 'FAS device' : 'AED'} — will mark ${isFas ? 'Faulty' : 'Out of service'}`,
+    }
+  }
   if (r.kind === 'defect') {
     const d = DEFECT_BY_KEY[r.defectType]
     return {
@@ -38,7 +47,8 @@ export default function Approvals() {
     setBusyId(r.id)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
-      if (approve) await approveReport(orgId, orgName, r, profile?.name, actor)
+      if (r.kind === 'asset_defect') await decideAssetReport(orgId, r, approve, profile?.name, actor)
+      else if (approve) await approveReport(orgId, orgName, r, profile?.name, actor)
       else await rejectReport(orgId, r, profile?.name, actor)
       toast.success(approve ? 'Approved & applied' : 'Rejected')
     } catch (e) {
@@ -97,7 +107,7 @@ export default function Approvals() {
                           <span className="chip bg-brand-50 text-brand-700">Reported by: {r.reporterRole}</span>
                         )}
                       </div>
-                      <p className="text-sm text-ink-500">{r.extLabel || r.extId}</p>
+                      <p className="text-sm text-ink-500">{r.extLabel || r.assetLabel || r.extId}</p>
                       <p className="mt-0.5 text-xs text-ink-400">{m.detail}</p>
                       {r.note && <p className="mt-2 rounded-lg bg-ink-50 px-3 py-2 text-sm text-ink-600">“{r.note}”</p>}
                       <p className="mt-2 text-xs text-ink-400">By {r.reportedByName} · {fmt(r.reportedAt)}</p>
@@ -128,7 +138,7 @@ export default function Approvals() {
                 <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: m.color }} />
                   <span className="font-semibold text-ink-800">{m.title}</span>
-                  <span className="text-sm text-ink-400">{r.extLabel || r.extId}</span>
+                  <span className="text-sm text-ink-400">{r.extLabel || r.assetLabel || r.extId}</span>
                   {r.reporterRole && <span className="chip bg-brand-50 text-brand-700">{r.reporterRole}</span>}
                   <Badge className="ml-auto" color={r.approvalStatus === 'approved' ? '#16a34a' : '#dc2626'}>
                     {r.approvalStatus === 'approved' ? 'Approved' : 'Rejected'}
