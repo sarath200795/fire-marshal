@@ -10,6 +10,7 @@ import { useFleet } from '../context/FleetContext'
 import { addFas, updateFas, deleteFas, serviceFas } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
+import SitePicker from '../components/SitePicker'
 import { dueState, fasColor } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
@@ -221,8 +222,7 @@ export default function FASRepository() {
               <Field label="Device ID / Tag"><input className="input" value={editing.deviceId} onChange={set('deviceId')} placeholder="e.g. MCP-03" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
               <Field label="Site / Center name *">
-                <input className="input" list="fas-sites" value={editing.centerName} onChange={(e) => onSite(e.target.value)} placeholder="e.g. Tower B" required />
-                <datalist id="fas-sites">{sites.map((s) => <option key={s} value={s} />)}</datalist>
+                <SitePicker value={editing.centerName} sites={sites} onChange={onSite} required placeholder="e.g. Tower B" />
               </Field>
               <Field label="Zone / Loop"><input className="input" value={editing.zone} onChange={set('zone')} placeholder="e.g. Zone 4" /></Field>
               <Field label="Region"><select className="input" value={editing.region} onChange={set('region')}><option value="">—</option>{REGIONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
