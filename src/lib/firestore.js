@@ -1119,3 +1119,44 @@ export async function decideAssetReport(orgId, report, approve, reviewerName, ac
     summary: `${report.defect}${approve ? ` — marked ${isFas ? 'Faulty' : 'Out of service'}` : ' — dismissed'}`,
   })
 }
+
+// ── AED / FAS bulk create (from spreadsheet upload) ───────────────────────────
+// Each row writes the asset doc + its public QR mirror (2 ops); chunk under the
+// 500-op Firestore batch limit.
+const BULK_CHUNK = 200
+
+export async function bulkAddAeds(orgId, orgName, rows, actor) {
+  let created = 0
+  for (let i = 0; i < rows.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const row of rows.slice(i, i + BULK_CHUNK)) {
+      const ref = doc(aedCol(orgId))
+      const qrToken = generateQrToken()
+      const a = { ...cleanAed(row), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+      batch.set(ref, a)
+      batch.set(qrRef(qrToken), aedMirror(orgId, orgName, ref.id, a))
+      created++
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'aed.bulk_create', { target: 'aed', summary: `Bulk added ${created} AED(s)` })
+  return { created }
+}
+
+export async function bulkAddFas(orgId, orgName, rows, actor) {
+  let created = 0
+  for (let i = 0; i < rows.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const row of rows.slice(i, i + BULK_CHUNK)) {
+      const ref = doc(fasCol(orgId))
+      const qrToken = generateQrToken()
+      const a = { ...cleanFas(row), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+      batch.set(ref, a)
+      batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
+      created++
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'fas.bulk_create', { target: 'fas', summary: `Bulk added ${created} FAS device(s)` })
+  return { created }
+}
