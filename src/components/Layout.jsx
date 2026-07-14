@@ -28,6 +28,7 @@ import {
   FlaskConical,
   HeartPulse,
   BellRing,
+  Bell,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -74,7 +75,7 @@ function NavItem({ to, icon: Icon, label, badge, onClick }) {
 
 export default function Layout() {
   const { profile, orgName, isAdmin, isDemo, signOut } = useAuth()
-  const { pendingReports, pendingUsers, refillDue, inProcess, physicalDefects, physicalOpen, deletedExtinguishers } = useFleet()
+  const { pendingReports, pendingUsers, refillDue, inProcess, physicalDefects, physicalOpen, deletedExtinguishers, aedsDue, fasDue } = useFleet()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -110,6 +111,7 @@ export default function Layout() {
       </p>
       <NavItem to="/app/dashboard" icon={LayoutDashboard} label="Dashboard" onClick={close} />
       <NavItem to="/app/repository" icon={Boxes} label="Repository" onClick={close} />
+      <NavItem to="/app/assets-due" icon={Bell} label="Assets Due" badge={refillDue.length + physicalDefects.length + (aedsDue || 0) + (fasDue || 0)} onClick={close} />
 
       <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
         Manage

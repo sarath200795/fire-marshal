@@ -36,6 +36,7 @@ const AEDDashboard = lazy(() => import('./pages/AEDDashboard'))
 const FASRepository = lazy(() => import('./pages/FASRepository'))
 const FASDashboard = lazy(() => import('./pages/FASDashboard'))
 const AssetBulkUpload = lazy(() => import('./pages/AssetBulkUpload'))
+const AssetsDue = lazy(() => import('./pages/AssetsDue'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
 const RecycleBin = lazy(() => import('./pages/RecycleBin'))
 
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="fas" element={<FASRepository />} />
             <Route path="fas-dashboard" element={<FASDashboard />} />
             <Route path="asset-bulk-upload" element={<AssetBulkUpload />} />
+            <Route path="assets-due" element={<AssetsDue />} />
             <Route path="add" element={<AddExtinguisher />} />
             <Route path="bulk-upload" element={<BulkUpload />} />
             <Route path="qr-print" element={<QRPrint />} />

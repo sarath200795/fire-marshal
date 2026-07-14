@@ -46,6 +46,30 @@ export const AUDIT_META = {
   [AUDIT.USER_STATUS]: { label: 'User status', color: '#f59e0b' },
   [AUDIT.USER_ROLE]: { label: 'User role', color: '#6366f1' },
   [AUDIT.ORG_SETTINGS]: { label: 'Org settings', color: '#64748b' },
+
+  // Safety signage
+  'signage.create': { label: 'Added signage', color: '#16a34a' },
+  'signage.update': { label: 'Edited signage', color: '#6366f1' },
+  'signage.delete': { label: 'Deleted signage', color: '#dc2626' },
+  // Mock drills
+  'mockdrill.create': { label: 'Logged mock drill', color: '#16a34a' },
+  'mockdrill.delete': { label: 'Deleted mock drill', color: '#dc2626' },
+  // AED
+  'aed.create': { label: 'Added AED', color: '#16a34a' },
+  'aed.update': { label: 'Edited AED', color: '#6366f1' },
+  'aed.service': { label: 'AED inspected', color: '#0ea5e9' },
+  'aed.delete': { label: 'Deleted AED', color: '#dc2626' },
+  'aed.bulk_create': { label: 'Bulk added AEDs', color: '#16a34a' },
+  'aed.defect_approved': { label: 'AED defect approved', color: '#b45309' },
+  'aed.defect_rejected': { label: 'AED defect dismissed', color: '#64748b' },
+  // FAS
+  'fas.create': { label: 'Added FAS device', color: '#16a34a' },
+  'fas.update': { label: 'Edited FAS device', color: '#6366f1' },
+  'fas.service': { label: 'FAS serviced', color: '#0ea5e9' },
+  'fas.delete': { label: 'Deleted FAS device', color: '#dc2626' },
+  'fas.bulk_create': { label: 'Bulk added FAS', color: '#16a34a' },
+  'fas.defect_approved': { label: 'FAS defect approved', color: '#b45309' },
+  'fas.defect_rejected': { label: 'FAS defect dismissed', color: '#64748b' },
 }
 
 export function auditMeta(action) {
