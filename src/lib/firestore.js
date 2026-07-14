@@ -948,23 +948,57 @@ const cleanAed = (d) => ({
   notes: (d.notes || '').trim(),
 })
 
-export async function addAed(orgId, data, actor) {
-  const ref = await addDoc(aedCol(orgId), { ...cleanAed(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-  await logAudit(orgId, actor, 'aed.create', {
-    target: 'aed', targetId: ref.id,
-    targetLabel: `${data.assetId || 'AED'} @ ${data.centerName}`,
-    summary: `AED ${data.assetId || ''} added @ ${data.centerName}`,
-  })
-  return ref.id
+// Public-readable QR mirror for an AED (keyed by qrToken, under /qr/{token}).
+function aedMirror(orgId, orgName, id, a) {
+  return {
+    assetKind: 'aed', orgId, orgName: orgName || '', assetRefId: id, token: a.qrToken,
+    label: a.assetId || 'AED', brand: a.brand || '', model: a.model || '',
+    centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
+    status: a.status || 'ready', batteryExpiry: a.batteryExpiry || '', padExpiry: a.padExpiry || '',
+    lastInspection: a.lastInspection || '', nextInspection: a.nextInspection || '', updatedAt: serverTimestamp(),
+  }
 }
 
-export async function updateAed(orgId, id, updates, actor) {
-  await updateDoc(aedRef(orgId, id), { ...cleanAed(updates), updatedAt: serverTimestamp() })
+export async function addAed(orgId, orgName, data, actor) {
+  const ref = doc(aedCol(orgId))
+  const qrToken = generateQrToken()
+  const a = { ...cleanAed(data), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.set(ref, a)
+  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, ref.id, a))
+  await batch.commit()
+  await logAudit(orgId, actor, 'aed.create', { target: 'aed', targetId: ref.id, targetLabel: `${data.assetId || 'AED'} @ ${data.centerName}`, summary: `AED ${data.assetId || ''} added @ ${data.centerName}` })
+  return { id: ref.id, qrToken }
+}
+
+export async function updateAed(orgId, orgName, id, updates, actor) {
+  const qrToken = updates.qrToken || generateQrToken()
+  const a = { ...cleanAed(updates), qrToken, updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.update(aedRef(orgId, id), a)
+  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, id, a))
+  await batch.commit()
   await logAudit(orgId, actor, 'aed.update', { target: 'aed', targetId: id, targetLabel: `${updates.assetId || 'AED'} @ ${updates.centerName}`, summary: 'AED updated' })
 }
 
-export async function deleteAed(orgId, id, actor, label) {
-  await deleteDoc(aedRef(orgId, id))
+/** Log a service/inspection: stamps last inspection today, sets the next due, marks Ready. */
+export async function serviceAed(orgId, orgName, asset, nextInspection, actor) {
+  const today = new Date().toISOString().slice(0, 10)
+  const merged = { ...asset, lastInspection: today, nextInspection: nextInspection || '', status: 'ready' }
+  const qrToken = asset.qrToken || generateQrToken()
+  const a = { ...cleanAed(merged), qrToken, updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.update(aedRef(orgId, asset.id), a)
+  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, asset.id, a))
+  await batch.commit()
+  await logAudit(orgId, actor, 'aed.service', { target: 'aed', targetId: asset.id, targetLabel: `${asset.assetId || 'AED'} @ ${asset.centerName}`, summary: `AED serviced — next inspection ${nextInspection || '—'}` })
+}
+
+export async function deleteAed(orgId, id, qrToken, actor, label) {
+  const batch = writeBatch(db)
+  batch.delete(aedRef(orgId, id))
+  if (qrToken) batch.delete(qrRef(qrToken))
+  await batch.commit()
   await logAudit(orgId, actor, 'aed.delete', { target: 'aed', targetId: id, targetLabel: label || '' })
 }
 
@@ -994,22 +1028,94 @@ const cleanFas = (d) => ({
   notes: (d.notes || '').trim(),
 })
 
-export async function addFas(orgId, data, actor) {
-  const ref = await addDoc(fasCol(orgId), { ...cleanFas(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-  await logAudit(orgId, actor, 'fas.create', {
-    target: 'fas', targetId: ref.id,
-    targetLabel: `${data.deviceId || data.deviceType} @ ${data.centerName}`,
-    summary: `FAS ${data.deviceType} added @ ${data.centerName}`,
-  })
-  return ref.id
+function fasMirror(orgId, orgName, id, a) {
+  return {
+    assetKind: 'fas', orgId, orgName: orgName || '', assetRefId: id, token: a.qrToken,
+    label: a.deviceId || a.deviceType || 'FAS', deviceType: a.deviceType || '', zone: a.zone || '',
+    centerName: a.centerName || '', region: a.region || '', entity: a.entity || '', location: a.location || '',
+    status: a.status || 'operational', lastService: a.lastService || '', nextService: a.nextService || '',
+    amcVendor: a.amcVendor || '', updatedAt: serverTimestamp(),
+  }
 }
 
-export async function updateFas(orgId, id, updates, actor) {
-  await updateDoc(fasRef(orgId, id), { ...cleanFas(updates), updatedAt: serverTimestamp() })
+export async function addFas(orgId, orgName, data, actor) {
+  const ref = doc(fasCol(orgId))
+  const qrToken = generateQrToken()
+  const a = { ...cleanFas(data), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.set(ref, a)
+  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
+  await batch.commit()
+  await logAudit(orgId, actor, 'fas.create', { target: 'fas', targetId: ref.id, targetLabel: `${data.deviceId || data.deviceType} @ ${data.centerName}`, summary: `FAS ${data.deviceType} added @ ${data.centerName}` })
+  return { id: ref.id, qrToken }
+}
+
+export async function updateFas(orgId, orgName, id, updates, actor) {
+  const qrToken = updates.qrToken || generateQrToken()
+  const a = { ...cleanFas(updates), qrToken, updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.update(fasRef(orgId, id), a)
+  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, id, a))
+  await batch.commit()
   await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: 'FAS device updated' })
 }
 
-export async function deleteFas(orgId, id, actor, label) {
-  await deleteDoc(fasRef(orgId, id))
+/** Log a service: stamps last service today, sets the next due, marks Operational. */
+export async function serviceFas(orgId, orgName, asset, nextService, actor) {
+  const today = new Date().toISOString().slice(0, 10)
+  const merged = { ...asset, lastService: today, nextService: nextService || '', status: 'operational' }
+  const qrToken = asset.qrToken || generateQrToken()
+  const a = { ...cleanFas(merged), qrToken, updatedAt: serverTimestamp() }
+  const batch = writeBatch(db)
+  batch.update(fasRef(orgId, asset.id), a)
+  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, asset.id, a))
+  await batch.commit()
+  await logAudit(orgId, actor, 'fas.service', { target: 'fas', targetId: asset.id, targetLabel: `${asset.deviceId || asset.deviceType} @ ${asset.centerName}`, summary: `FAS serviced — next service ${nextService || '—'}` })
+}
+
+export async function deleteFas(orgId, id, qrToken, actor, label) {
+  const batch = writeBatch(db)
+  batch.delete(fasRef(orgId, id))
+  if (qrToken) batch.delete(qrRef(qrToken))
+  await batch.commit()
   await logAudit(orgId, actor, 'fas.delete', { target: 'fas', targetId: id, targetLabel: label || '' })
+}
+
+// ── AED / FAS public defect reports (submitted from a QR scan) ─────────────────
+/** Create a pending asset-defect report (public QR scan). Lands in Approvals. */
+export async function createAssetReport(orgId, { assetKind, assetRefId, assetLabel, defect, token }) {
+  await addDoc(reportCol(orgId), {
+    kind: 'asset_defect',
+    assetKind,
+    assetRefId,
+    assetLabel: assetLabel || '',
+    defect,
+    token: token || '',
+    approvalStatus: 'pending',
+    source: 'qr',
+    reportedByName: 'QR Scan (Public)',
+    reportedAt: serverTimestamp(),
+    createdAt: serverTimestamp(),
+  })
+}
+
+/** Approve (→ mark the asset Faulty/Out-of-service) or reject an asset-defect report. */
+export async function decideAssetReport(orgId, report, approve, reviewerName, actor) {
+  const isFas = report.assetKind === 'fas'
+  const newStatus = isFas ? 'faulty' : 'out_of_service'
+  const batch = writeBatch(db)
+  batch.update(reportRef(orgId, report.id), {
+    approvalStatus: approve ? 'approved' : 'rejected',
+    reviewedBy: reviewerName || '',
+    reviewedAt: serverTimestamp(),
+  })
+  if (approve && report.assetRefId) {
+    batch.update((isFas ? fasRef : aedRef)(orgId, report.assetRefId), { status: newStatus, updatedAt: serverTimestamp() })
+    if (report.token) batch.update(qrRef(report.token), { status: newStatus, updatedAt: serverTimestamp() })
+  }
+  await batch.commit()
+  await logAudit(orgId, actor, `${report.assetKind}.defect_${approve ? 'approved' : 'rejected'}`, {
+    target: report.assetKind, targetId: report.assetRefId || '', targetLabel: report.assetLabel || '',
+    summary: `${report.defect}${approve ? ` — marked ${isFas ? 'Faulty' : 'Out of service'}` : ' — dismissed'}`,
+  })
 }

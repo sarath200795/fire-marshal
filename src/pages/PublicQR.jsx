@@ -6,10 +6,95 @@ import { Flame, AlertTriangle, Truck, RefreshCw, ShieldCheck, MapPin, Calendar, 
 import toast from 'react-hot-toast'
 import { Badge, Spinner } from '../components/ui'
 import ReportDefectModal from '../components/ReportDefectModal'
-import { getExtinguisherByToken, createReport } from '../lib/firestore'
+import { getExtinguisherByToken, createReport, createAssetReport } from '../lib/firestore'
 import { toDate, deriveStatus, severityLabel, healthColor } from '../lib/extinguisherLogic'
-import { STATUS, STATUS_LABEL, STATUS_COLOR } from '../lib/constants'
+import {
+  STATUS, STATUS_LABEL, STATUS_COLOR,
+  ASSET_DEFECTS, AED_STATUS_LABEL, AED_STATUS_COLOR, FAS_STATUS_LABEL, FAS_STATUS_COLOR,
+} from '../lib/constants'
 import CategoryBadges from '../components/CategoryBadges'
+
+// ── Public view for a scanned AED / FAS asset (details + defect reporting) ────
+function AssetView({ data }) {
+  const isFas = data.assetKind === 'fas'
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  const statusLabel = (isFas ? FAS_STATUS_LABEL : AED_STATUS_LABEL)[data.status] || data.status
+  const statusColor = (isFas ? FAS_STATUS_COLOR : AED_STATUS_COLOR)[data.status] || '#64748b'
+  const defects = ASSET_DEFECTS[data.assetKind] || []
+  const fmt = (v) => { const d = toDate(v); return d ? format(d, 'dd MMM yyyy') : '—' }
+
+  const report = async (defect) => {
+    setBusy(true)
+    try {
+      await createAssetReport(data.orgId, {
+        assetKind: data.assetKind, assetRefId: data.assetRefId, assetLabel: data.label, defect, token: data.token,
+      })
+      setDone(true)
+      toast.success('Defect reported — pending review')
+    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="aurora min-h-screen px-4 py-8 text-white">
+      <motion.div className="mx-auto w-full max-w-md" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="mb-5 flex items-center justify-center gap-2">
+          <span className="text-2xl">{isFas ? '🔔' : '❤️'}</span>
+          <span className="text-lg font-extrabold tracking-tight">Fire Marshal</span>
+        </div>
+        <div className="rounded-3xl glass p-6">
+          <div className="mb-4 text-center">
+            <p className="text-xs uppercase tracking-wide text-white/50">{isFas ? 'Fire Alarm Device' : 'Defibrillator (AED)'}</p>
+            <p className="text-3xl font-black">{data.label}</p>
+            {isFas ? <p className="text-white/60">{data.deviceType}{data.zone ? ` · ${data.zone}` : ''}</p>
+                   : <p className="text-white/60">{[data.brand, data.model].filter(Boolean).join(' ')}</p>}
+          </div>
+          <div className="mb-4 flex justify-center">
+            <Badge color={statusColor} soft={false}>{statusLabel}</Badge>
+          </div>
+          <div className="space-y-2">
+            {data.region && <Row icon={MapPin} label="Region" value={data.region} />}
+            <Row icon={MapPin} label="Site" value={data.centerName} />
+            {data.location && <Row icon={MapPin} label="Location" value={data.location} />}
+            {isFas ? (
+              <>
+                <Row icon={Calendar} label="Last Service" value={fmt(data.lastService)} />
+                <Row icon={Calendar} label="Next Service" value={fmt(data.nextService)} />
+                {data.amcVendor && <Row icon={ShieldCheck} label="AMC Vendor" value={data.amcVendor} />}
+              </>
+            ) : (
+              <>
+                <Row icon={Calendar} label="Battery Expiry" value={fmt(data.batteryExpiry)} />
+                <Row icon={Calendar} label="Pad Expiry" value={fmt(data.padExpiry)} />
+                <Row icon={Calendar} label="Next Inspection" value={fmt(data.nextInspection)} />
+              </>
+            )}
+          </div>
+
+          {done ? (
+            <div className="mt-6 rounded-2xl bg-white/10 p-4 text-center">
+              <ShieldCheck size={22} className="mx-auto mb-1 text-green-300" />
+              <p className="text-sm font-bold">Thanks — your report was submitted.</p>
+              <p className="text-xs text-white/50">The {data.orgName || 'site'} team will review it.</p>
+            </div>
+          ) : (
+            <div className="mt-6">
+              <p className="mb-2 text-center text-sm font-semibold text-white/70">Report a defect</p>
+              <div className="grid grid-cols-1 gap-2">
+                {defects.map((d) => (
+                  <button key={d} className="btn w-full bg-white/10 text-white hover:bg-white/20" disabled={busy} onClick={() => report(d)}>
+                    <AlertTriangle size={15} /> {d}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-center text-xs text-white/40">Reports are reviewed and approved in the {data.orgName || 'organization'} portal.</p>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  )
+}
 
 function Row({ icon: Icon, label, value, accent }) {
   return (
@@ -107,6 +192,9 @@ export default function PublicQR() {
       </div>
     )
   }
+
+  // AED / FAS assets share the /qr/:token route but render their own view.
+  if (ext.assetKind === 'aed' || ext.assetKind === 'fas') return <AssetView data={ext} />
 
   const d = deriveStatus(ext)
   const accent = healthColor(ext)

@@ -1,15 +1,34 @@
 import { useMemo, useState, useEffect } from 'react'
-import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download } from 'lucide-react'
+import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addAed, updateAed, deleteAed } from '../lib/firestore'
+import { addAed, updateAed, deleteAed, serviceAed } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
+import { publicQrUrl } from '../lib/qr'
 import { format } from 'date-fns'
 import { dueState, aedColor } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, AED_STATUS, AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
+
+// Build site → {region, entity} from existing records so AED sites auto-fill.
+function useSiteMeta() {
+  const { extinguishers, signages, aeds, fas } = useFleet()
+  return useMemo(() => {
+    const m = {}
+    const add = (rows) => rows.forEach((r) => {
+      const s = r.centerName
+      if (!s) return
+      if (!m[s]) m[s] = { region: '', entity: '' }
+      if (!m[s].region && r.region) m[s].region = r.region
+      if (!m[s].entity && r.entity) m[s].entity = r.entity
+    })
+    add(extinguishers || []); add(signages || []); add(aeds || []); add(fas || [])
+    return m
+  }, [extinguishers, signages, aeds, fas])
+}
 
 const fmtDate = (v) => { const d = toDate(v); return d ? format(d, 'dd MMM yyyy') : String(v || '') }
 
@@ -49,15 +68,25 @@ function DateCell({ value }) {
 }
 
 export default function AEDRepository() {
-  const { orgId, profile } = useAuth()
+  const { orgId, orgName, profile } = useAuth()
   const { aeds, sites, loading } = useFleet()
+  const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
 
   const [f, setF] = useState({ search: '', regions: [], entities: [], statuses: [] })
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState(null)
   const [removing, setRemoving] = useState(null)
+  const [qrFor, setQrFor] = useState(null)
+  const [serviceFor, setServiceFor] = useState(null)
+  const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Picking a known site fills its region + entity (from the already-created sites).
+  const onSite = (v) => setEditing((e) => {
+    const meta = siteMeta[v.trim()]
+    return { ...e, centerName: v, ...(meta ? { region: meta.region || e.region, entity: meta.entity || e.entity } : {}) }
+  })
 
   const toggle = (field, v) => setF((p) => ({ ...p, [field]: p[field].includes(v) ? p[field].filter((x) => x !== v) : [...p[field], v] }))
   const anyActive = f.search || f.regions.length || f.entities.length || f.statuses.length
@@ -85,16 +114,25 @@ export default function AEDRepository() {
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
-      if (editing.id) { await updateAed(orgId, editing.id, editing, actor); toast.success('AED updated') }
-      else { await addAed(orgId, editing, actor); toast.success('AED added') }
+      if (editing.id) { await updateAed(orgId, orgName, editing.id, editing, actor); toast.success('AED updated') }
+      else { await addAed(orgId, orgName, editing, actor); toast.success('AED added') }
       setEditing(null)
     } catch (err) { toast.error(err.message) } finally { setBusy(false) }
   }
   const confirmDelete = async () => {
     try {
-      await deleteAed(orgId, removing.id, { uid: profile?.uid, name: profile?.name }, `${removing.assetId || 'AED'} @ ${removing.centerName}`)
+      await deleteAed(orgId, removing.id, removing.qrToken, { uid: profile?.uid, name: profile?.name }, `${removing.assetId || 'AED'} @ ${removing.centerName}`)
       toast.success('AED deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
+  }
+  const openService = (a) => { setServiceFor(a); setNextDate(a.nextInspection || '') }
+  const confirmService = async () => {
+    setBusy(true)
+    try {
+      await serviceAed(orgId, orgName, serviceFor, nextDate, { uid: profile?.uid, name: profile?.name })
+      toast.success('Inspection logged')
+      setServiceFor(null)
+    } catch (err) { toast.error(err.message) } finally { setBusy(false) }
   }
   const doExport = () => {
     if (!visible.length) return toast.error('Nothing to export')
@@ -164,6 +202,8 @@ export default function AEDRepository() {
                     <td className="px-4 py-3"><Badge color={AED_STATUS_COLOR[a.status] || '#64748b'}>{AED_STATUS_LABEL[a.status] || a.status}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
+                        <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log inspection / service"><Wrench size={14} /></button>
+                        {a.qrToken && <button className="btn-soft px-2 py-1.5" onClick={() => setQrFor(a)} title="View QR code"><QrCode size={15} /></button>}
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>
@@ -192,7 +232,7 @@ export default function AEDRepository() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Asset ID / Serial"><input className="input" value={editing.assetId} onChange={set('assetId')} placeholder="e.g. AED-001" /></Field>
               <Field label="Site / Center name *">
-                <input className="input" list="aed-sites" value={editing.centerName} onChange={set('centerName')} placeholder="e.g. Tower B - Lobby" required />
+                <input className="input" list="aed-sites" value={editing.centerName} onChange={(e) => onSite(e.target.value)} placeholder="e.g. Tower B - Lobby" required />
                 <datalist id="aed-sites">{sites.map((s) => <option key={s} value={s} />)}</datalist>
               </Field>
               <Field label="Brand"><input className="input" value={editing.brand} onChange={set('brand')} placeholder="e.g. Philips" /></Field>
@@ -222,6 +262,30 @@ export default function AEDRepository() {
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
         </div>
+      </Modal>
+
+      <Modal open={!!qrFor} onClose={() => setQrFor(null)} title={`QR — ${qrFor?.assetId || 'AED'}`}>
+        {qrFor && (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="rounded-2xl bg-white p-4 shadow-clay"><QRCodeSVG value={publicQrUrl(qrFor.qrToken)} size={200} level="H" includeMargin /></div>
+            <p className="text-sm font-bold text-ink-900">{qrFor.assetId || 'AED'} · {qrFor.centerName}</p>
+            <p className="break-all text-xs text-ink-400">{publicQrUrl(qrFor.qrToken)}</p>
+            <p className="text-xs text-ink-500">Scanning opens a public status page where anyone can report a defect.</p>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!serviceFor} onClose={() => setServiceFor(null)} title="Log inspection / service">
+        {serviceFor && (
+          <div className="space-y-4">
+            <p className="text-sm text-ink-600">Record an inspection for <strong>{serviceFor.assetId || 'this AED'}</strong> @ <strong>{serviceFor.centerName}</strong>. Last inspection is set to today and status to <strong>Ready</strong>.</p>
+            <Field label="Next inspection due"><input type="date" className="input" value={nextDate} onChange={(e) => setNextDate(e.target.value)} /></Field>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setServiceFor(null)}>Cancel</button>
+              <button className="btn-primary" onClick={confirmService} disabled={busy}>{busy ? <Spinner size={16} /> : 'Log inspection'}</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
