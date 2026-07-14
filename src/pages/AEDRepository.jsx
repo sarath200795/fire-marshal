@@ -9,6 +9,7 @@ import { useFleet } from '../context/FleetContext'
 import { addAed, updateAed, deleteAed, serviceAed } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
+import SitePicker from '../components/SitePicker'
 import { format } from 'date-fns'
 import { dueState, aedColor } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
@@ -234,8 +235,7 @@ export default function AEDRepository() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Asset ID / Serial"><input className="input" value={editing.assetId} onChange={set('assetId')} placeholder="e.g. AED-001" /></Field>
               <Field label="Site / Center name *">
-                <input className="input" list="aed-sites" value={editing.centerName} onChange={(e) => onSite(e.target.value)} placeholder="e.g. Tower B - Lobby" required />
-                <datalist id="aed-sites">{sites.map((s) => <option key={s} value={s} />)}</datalist>
+                <SitePicker value={editing.centerName} sites={sites} onChange={onSite} required placeholder="e.g. Tower B - Lobby" />
               </Field>
               <Field label="Brand"><input className="input" value={editing.brand} onChange={set('brand')} placeholder="e.g. Philips" /></Field>
               <Field label="Model"><input className="input" value={editing.model} onChange={set('model')} placeholder="e.g. HeartStart FRx" /></Field>
