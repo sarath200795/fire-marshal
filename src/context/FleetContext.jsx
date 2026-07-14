@@ -23,6 +23,7 @@ import {
   isDeleted,
 } from '../lib/extinguisherLogic'
 import { derivePhysicalDefectLog } from '../lib/defectReports'
+import { aedCondition, fasCondition } from '../lib/assetLogic'
 import { EXT_LOAD_CAP } from '../lib/firestore'
 
 const FleetContext = createContext(null)
@@ -135,6 +136,8 @@ export function FleetProvider({ children }) {
       mockDrills,
       aeds,
       fas,
+      aedsDue: aeds.filter((a) => { const c = aedCondition(a, today); return c.due || c.expired }).length,
+      fasDue: fas.filter((a) => { const c = fasCondition(a, today); return c.due || c.expired }).length,
       sites,
       extinguishers: active,
       deletedExtinguishers,
