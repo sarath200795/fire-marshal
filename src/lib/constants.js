@@ -109,7 +109,7 @@ export const SIGNAGE_TYPES = [
   'No Smoking',
   'Directional Arrow',
   'First Aid',
-  'Other',
+  'Electrical Room Danger Sign',
 ]
 
 // Signage types where capturing the floor is meaningful (per-floor records).
