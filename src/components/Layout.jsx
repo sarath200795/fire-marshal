@@ -26,6 +26,8 @@ import {
   Signpost,
   Siren,
   FlaskConical,
+  HeartPulse,
+  BellRing,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
@@ -121,6 +123,18 @@ export default function Layout() {
       </p>
       <NavItem to="/app/signages" icon={Signpost} label="Safety Signage" onClick={close} />
       <NavItem to="/app/mock-drills" icon={Siren} label="Mock Drills" onClick={close} />
+
+      <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
+        AED
+      </p>
+      <NavItem to="/app/aed-dashboard" icon={LayoutDashboard} label="AED Dashboard" onClick={close} />
+      <NavItem to="/app/aed" icon={HeartPulse} label="AED Repository" onClick={close} />
+
+      <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
+        Fire Alarm (FAS)
+      </p>
+      <NavItem to="/app/fas-dashboard" icon={LayoutDashboard} label="FAS Dashboard" onClick={close} />
+      <NavItem to="/app/fas" icon={BellRing} label="FAS Repository" onClick={close} />
 
       <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-widest text-ink-500">
         Workflow

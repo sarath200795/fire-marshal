@@ -106,7 +106,6 @@ export const SIGNAGE_TYPES = [
   'Fire Exit',
   'Assembly Point',
   'Fire Extinguisher Sign',
-  'Fire Hose Reel Sign',
   'No Smoking',
   'Directional Arrow',
   'First Aid',
@@ -124,6 +123,50 @@ export const SIGNAGE_CONDITION_COLOR = {
   Damaged: '#ea580c',
   Missing: '#dc2626',
   Obstructed: '#b45309',
+}
+
+// ── AED (Automated External Defibrillator) inventory ─────────────────────────
+export const AED_STATUS = {
+  READY: 'ready',
+  SERVICE_DUE: 'service_due',
+  OUT_OF_SERVICE: 'out_of_service',
+}
+export const AED_STATUS_LABEL = {
+  [AED_STATUS.READY]: 'Ready',
+  [AED_STATUS.SERVICE_DUE]: 'Service Due',
+  [AED_STATUS.OUT_OF_SERVICE]: 'Out of Service',
+}
+export const AED_STATUS_COLOR = {
+  [AED_STATUS.READY]: '#16a34a',
+  [AED_STATUS.SERVICE_DUE]: '#f59e0b',
+  [AED_STATUS.OUT_OF_SERVICE]: '#dc2626',
+}
+
+// ── FAS (Fire Alarm System) device inventory ─────────────────────────────────
+export const FAS_DEVICE_TYPES = [
+  'Control Panel',
+  'Smoke Detector',
+  'Heat Detector',
+  'Manual Call Point',
+  'Sounder / Hooter',
+  'Beam Detector',
+  'Repeater Panel',
+  'Other',
+]
+export const FAS_STATUS = {
+  OPERATIONAL: 'operational',
+  SERVICE_DUE: 'service_due',
+  FAULTY: 'faulty',
+}
+export const FAS_STATUS_LABEL = {
+  [FAS_STATUS.OPERATIONAL]: 'Operational',
+  [FAS_STATUS.SERVICE_DUE]: 'Service Due',
+  [FAS_STATUS.FAULTY]: 'Faulty',
+}
+export const FAS_STATUS_COLOR = {
+  [FAS_STATUS.OPERATIONAL]: '#16a34a',
+  [FAS_STATUS.SERVICE_DUE]: '#f59e0b',
+  [FAS_STATUS.FAULTY]: '#dc2626',
 }
 
 // Columns used for xlsx bulk upload template + export
