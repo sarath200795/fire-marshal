@@ -84,6 +84,9 @@ export default function AEDRepository() {
   const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // Only offer sites that belong to the 1P / 2P entities.
+  const pickSites = useMemo(() => sites.filter((s) => ['1P', '2P'].includes(siteMeta[s]?.entity)), [sites, siteMeta])
+
   // Picking a known site fills its region + entity (from the already-created sites).
   const onSite = (v) => setEditing((e) => {
     const meta = siteMeta[v.trim()]
@@ -235,7 +238,7 @@ export default function AEDRepository() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Asset ID / Serial"><input className="input" value={editing.assetId} onChange={set('assetId')} placeholder="e.g. AED-001" /></Field>
               <Field label="Site / Center name *">
-                <SitePicker value={editing.centerName} sites={sites} onChange={onSite} required placeholder="e.g. Tower B - Lobby" />
+                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} required placeholder="e.g. Tower B - Lobby" />
               </Field>
               <Field label="Brand"><input className="input" value={editing.brand} onChange={set('brand')} placeholder="e.g. Philips" /></Field>
               <Field label="Model"><input className="input" value={editing.model} onChange={set('model')} placeholder="e.g. HeartStart FRx" /></Field>

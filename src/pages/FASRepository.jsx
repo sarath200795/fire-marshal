@@ -73,6 +73,9 @@ export default function FASRepository() {
   const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // Only offer sites that belong to the 1P / 2P entities.
+  const pickSites = useMemo(() => sites.filter((s) => ['1P', '2P'].includes(siteMeta[s]?.entity)), [sites, siteMeta])
+
   const onSite = (v) => setEditing((e) => {
     const meta = siteMeta[v.trim()]
     return { ...e, centerName: v, ...(meta ? { region: meta.region || e.region, entity: meta.entity || e.entity } : {}) }
@@ -222,7 +225,7 @@ export default function FASRepository() {
               <Field label="Device ID / Tag"><input className="input" value={editing.deviceId} onChange={set('deviceId')} placeholder="e.g. MCP-03" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
               <Field label="Site / Center name *">
-                <SitePicker value={editing.centerName} sites={sites} onChange={onSite} required placeholder="e.g. Tower B" />
+                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} required placeholder="e.g. Tower B" />
               </Field>
               <Field label="Zone / Loop"><input className="input" value={editing.zone} onChange={set('zone')} placeholder="e.g. Zone 4" /></Field>
               <Field label="Region"><select className="input" value={editing.region} onChange={set('region')}><option value="">—</option>{REGIONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
