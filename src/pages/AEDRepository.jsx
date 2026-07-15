@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addAed, updateAed, deleteAed, serviceAed } from '../lib/firestore'
+import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
@@ -87,6 +87,24 @@ export default function AEDRepository() {
   // Only offer sites that belong to the 1P / 2P entities.
   const pickSites = useMemo(() => sites.filter((s) => ['1P', '2P'].includes(siteMeta[s]?.entity)), [sites, siteMeta])
 
+  // 1P/2P sites that don't yet have an AED — used by the auto-generate action.
+  const missingSites = useMemo(() => {
+    const have = new Set(aeds.map((a) => a.centerName))
+    return pickSites.filter((s) => !have.has(s))
+  }, [pickSites, aeds])
+
+  // One-click: create an AED (with QR code) for every 1P/2P site missing one.
+  const generateAll = async () => {
+    if (!missingSites.length) return
+    if (!window.confirm(`Generate an AED with a QR code for ${missingSites.length} site(s)? You can add battery/pad expiry dates afterwards.`)) return
+    setBusy(true)
+    try {
+      const rows = missingSites.map((s) => ({ centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
+      const res = await bulkAddAeds(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
+      toast.success(`Generated ${res.created} AED(s) with QR codes`)
+    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+  }
+
   // Picking a known site fills its region + entity (from the already-created sites).
   const onSite = (v) => setEditing((e) => {
     const meta = siteMeta[v.trim()]
@@ -154,6 +172,11 @@ export default function AEDRepository() {
   return (
     <div>
       <PageHeader title="AED Repository" subtitle={`${visible.length}${anyActive ? ` of ${aeds.length}` : ''} defibrillator${visible.length === 1 ? '' : 's'}`} icon={HeartPulse}>
+        {missingSites.length > 0 && (
+          <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create an AED with a QR code for every 1P/2P site that doesn't have one">
+            <QrCode size={16} /> Generate for 1P/2P sites ({missingSites.length})
+          </button>
+        )}
         <Link to="/app/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
         <button className="btn-soft" onClick={doExport} disabled={!aeds.length}><Download size={16} /> Export</button>
         <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add AED</button>

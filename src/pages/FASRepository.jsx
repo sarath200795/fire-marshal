@@ -7,7 +7,7 @@ import { format } from 'date-fns'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addFas, updateFas, deleteFas, serviceFas } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
@@ -76,6 +76,24 @@ export default function FASRepository() {
   // Only offer sites that belong to the 1P / 2P entities.
   const pickSites = useMemo(() => sites.filter((s) => ['1P', '2P'].includes(siteMeta[s]?.entity)), [sites, siteMeta])
 
+  // 1P/2P sites without a FAS panel yet — used by the auto-generate action.
+  const missingSites = useMemo(() => {
+    const have = new Set(fas.filter((a) => a.deviceType === 'Control Panel').map((a) => a.centerName))
+    return pickSites.filter((s) => !have.has(s))
+  }, [pickSites, fas])
+
+  // One-click: create a FAS Panel (with QR code) for every 1P/2P site missing one.
+  const generateAll = async () => {
+    if (!missingSites.length) return
+    if (!window.confirm(`Generate a FAS Panel with a QR code for ${missingSites.length} site(s)?`)) return
+    setBusy(true)
+    try {
+      const rows = missingSites.map((s) => ({ centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
+      const res = await bulkAddFas(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
+      toast.success(`Generated ${res.created} FAS panel(s) with QR codes`)
+    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+  }
+
   const onSite = (v) => setEditing((e) => {
     const meta = siteMeta[v.trim()]
     return { ...e, centerName: v, ...(meta ? { region: meta.region || e.region, entity: meta.entity || e.entity } : {}) }
@@ -141,6 +159,11 @@ export default function FASRepository() {
   return (
     <div>
       <PageHeader title="FAS Repository" subtitle={`${visible.length}${anyActive ? ` of ${fas.length}` : ''} fire-alarm device${visible.length === 1 ? '' : 's'}`} icon={BellRing}>
+        {missingSites.length > 0 && (
+          <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create a FAS Panel with a QR code for every 1P/2P site that doesn't have one">
+            <QrCode size={16} /> Generate panels for 1P/2P sites ({missingSites.length})
+          </button>
+        )}
         <Link to="/app/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
         <button className="btn-soft" onClick={doExport} disabled={!fas.length}><Download size={16} /> Export</button>
         <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add device</button>
