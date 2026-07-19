@@ -1,17 +1,17 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload } from 'lucide-react'
+import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr, bulkDeleteFas } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
-import { dueState, fasColor } from '../lib/assetLogic'
+import { dueState, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
@@ -59,7 +59,7 @@ function DateCell({ value }) {
 }
 
 export default function FASRepository() {
-  const { orgId, orgName, profile } = useAuth()
+  const { orgId, orgName, profile, isAdmin } = useAuth()
   const { fas, sites, loading } = useFleet()
   const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
@@ -72,6 +72,8 @@ export default function FASRepository() {
   const [serviceFor, setServiceFor] = useState(null)
   const [nextDate, setNextDate] = useState('')
   const [busy, setBusy] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulkRemoving, setBulkRemoving] = useState(false)
 
   // Only offer sites that belong to the 1P / 2P entities.
   const pickSites = useMemo(() => sites.filter((s) => ['1P', '2P'].includes(siteMeta[s]?.entity)), [sites, siteMeta])
@@ -82,13 +84,17 @@ export default function FASRepository() {
     return pickSites.filter((s) => !have.has(s))
   }, [pickSites, fas])
 
-  // One-click: create a FAS Panel (with QR code) for every 1P/2P site missing one.
+  // Open the Add form with the next unique device ID pre-assigned.
+  const openAdd = () => setEditing({ ...EMPTY, deviceId: nextAssetId('FAS', fas, 'deviceId') })
+
+  // One-click (admin): create a FAS Panel (with QR code) for every 1P/2P site missing one.
   const generateAll = async () => {
     if (!missingSites.length) return
     if (!window.confirm(`Generate a FAS Panel with a QR code for ${missingSites.length} site(s)?`)) return
     setBusy(true)
     try {
-      const rows = missingSites.map((s) => ({ centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
+      const base = highestAssetSeq('FAS', fas, 'deviceId')
+      const rows = missingSites.map((s, i) => ({ deviceId: formatAssetId('FAS', base + 1 + i), centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
       const res = await bulkAddFas(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} FAS panel(s) with QR codes`)
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }
@@ -114,14 +120,34 @@ export default function FASRepository() {
     })
   }, [fas, f])
 
-  useEffect(() => { setPage(1) }, [f])
+  useEffect(() => { setPage(1); setSelected(new Set()) }, [f])
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount)
   const pageItems = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
+  // ── Row selection + bulk delete ──
+  const toggleSel = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const pageIds = pageItems.map((a) => a.id)
+  const allOnPage = pageIds.length > 0 && pageIds.every((id) => selected.has(id))
+  const toggleAllOnPage = () => setSelected((prev) => {
+    const n = new Set(prev)
+    if (allOnPage) pageIds.forEach((id) => n.delete(id)); else pageIds.forEach((id) => n.add(id))
+    return n
+  })
+  const confirmBulkDelete = async () => {
+    const items = fas.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, qrToken: a.qrToken }))
+    setBusy(true)
+    try {
+      await bulkDeleteFas(orgId, items, { uid: profile?.uid, name: profile?.name })
+      toast.success(`${items.length} FAS device(s) deleted`)
+      setSelected(new Set()); setBulkRemoving(false)
+    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+  }
+
   const save = async (e) => {
     e.preventDefault()
-    if (!editing.centerName.trim()) return toast.error('Site (center name) is required')
+    // Details can be filled in later — records save even when incomplete
+    // (they're flagged as "data not available" on the dashboard/repository).
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
@@ -136,12 +162,13 @@ export default function FASRepository() {
       toast.success('FAS device deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
   }
-  // View the QR — generating (and persisting) one first if the record lacks it.
+  // View the QR — or, for admins, mint one first if the record lacks it.
   const showQr = async (a) => {
     if (a.qrToken) { setQrFor(a); return }
+    if (!isAdmin) { toast.error('Only an admin can generate QR codes'); return }
     setBusy(true)
     try {
-      const token = await updateFas(orgId, orgName, a.id, a, { uid: profile?.uid, name: profile?.name })
+      const token = await generateFasQr(orgId, orgName, a, { uid: profile?.uid, name: profile?.name })
       setQrFor({ ...a, qrToken: token })
       toast.success('QR code generated')
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }
@@ -169,14 +196,14 @@ export default function FASRepository() {
   return (
     <div>
       <PageHeader title="FAS Repository" subtitle={`${visible.length}${anyActive ? ` of ${fas.length}` : ''} fire-alarm device${visible.length === 1 ? '' : 's'}`} icon={BellRing}>
-        {missingSites.length > 0 && (
+        {isAdmin && missingSites.length > 0 && (
           <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create a FAS Panel with a QR code for every 1P/2P site that doesn't have one">
             <QrCode size={16} /> Generate panels for 1P/2P sites ({missingSites.length})
           </button>
         )}
-        <Link to="/app/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
+        {isAdmin && <Link to="/app/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
         <button className="btn-soft" onClick={doExport} disabled={!fas.length}><Download size={16} /> Export</button>
-        <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add device</button>
+        <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add device</button>
       </PageHeader>
 
       {!loading && fas.length > 0 && (
@@ -199,15 +226,25 @@ export default function FASRepository() {
         <div className="grid place-items-center py-20"><Spinner size={28} /></div>
       ) : fas.length === 0 ? (
         <EmptyState icon={BellRing} title="No FAS devices yet" hint="Add fire-alarm panels and devices to track service due dates and faults."
-          action={<button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add device</button>} />
+          action={<button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add device</button>} />
       ) : visible.length === 0 ? (
         <EmptyState icon={Filter} title="No matches" hint="Try adjusting the filters." action={<button className="btn-ghost" onClick={clear}><X size={15} /> Clear filters</button>} />
       ) : (
         <>
+          {selected.size > 0 && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-brand-50 px-4 py-2.5 text-sm">
+              <span className="font-semibold text-brand-700">{selected.size} selected</span>
+              <div className="flex gap-2">
+                <button className="btn-ghost px-3 py-1.5" onClick={() => setSelected(new Set())}>Clear</button>
+                <button className="btn-danger px-3 py-1.5" onClick={() => setBulkRemoving(true)}><Trash2 size={15} /> Delete selected</button>
+              </div>
+            </div>
+          )}
           <div className="card overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-clay-100/70 text-left text-xs uppercase tracking-wide text-ink-500">
                 <tr>
+                  <th className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={allOnPage} onChange={toggleAllOnPage} title="Select all on this page" /></th>
                   <th className="px-4 py-3">Device</th><th className="px-4 py-3">Site</th><th className="px-4 py-3">Zone</th>
                   <th className="px-4 py-3">Next Service</th><th className="px-4 py-3">AMC Vendor</th>
                   <th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th>
@@ -215,9 +252,17 @@ export default function FASRepository() {
               </thead>
               <tbody className="divide-y divide-clay-200/60">
                 {pageItems.map((a) => (
-                  <tr key={a.id} className="hover:bg-ink-50/70" style={{ boxShadow: `inset 4px 0 0 ${fasColor(a, today)}` }}>
+                  <tr key={a.id} className={`hover:bg-ink-50/70 ${selected.has(a.id) ? 'bg-brand-50/60' : ''}`} style={{ boxShadow: `inset 4px 0 0 ${fasColor(a, today)}` }}>
+                    <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-brand-500" checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} /></td>
                     <td className="px-4 py-3">
-                      <div className="font-bold text-ink-900">{a.deviceId || a.deviceType}</div>
+                      <div className="flex items-center gap-1.5 font-bold text-ink-900">
+                        {a.deviceId || a.deviceType}
+                        {fasIncomplete(a) && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Data not available — details still need entering">
+                            <AlertTriangle size={11} /> Data N/A
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-ink-500">{a.deviceId ? a.deviceType : (a.location || '—')}</div>
                     </td>
                     <td className="px-4 py-3 text-ink-700">{a.centerName}</td>
@@ -228,7 +273,7 @@ export default function FASRepository() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log service"><Wrench size={14} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy} title={a.qrToken ? 'View QR code' : 'Generate QR code'}><QrCode size={15} /></button>
+                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} title={a.qrToken ? 'View QR code' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes')}><QrCode size={15} /></button>
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>
@@ -255,10 +300,10 @@ export default function FASRepository() {
         {editing && (
           <form onSubmit={save} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Device ID / Tag"><input className="input" value={editing.deviceId} onChange={set('deviceId')} placeholder="e.g. MCP-03" /></Field>
+              <Field label="Device ID (auto)"><input className="input bg-ink-50 text-ink-500" value={editing.deviceId} readOnly title="Automatically assigned — unique per device" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
-              <Field label="Site / Center name *">
-                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} required placeholder="e.g. Tower B" />
+              <Field label="Site / Center name">
+                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} placeholder="e.g. Tower B" />
               </Field>
               <Field label="Zone / Loop"><input className="input" value={editing.zone} onChange={set('zone')} placeholder="e.g. Zone 4" /></Field>
               <Field label="Region"><select className="input" value={editing.region} onChange={set('region')}><option value="">—</option>{REGIONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
@@ -284,6 +329,14 @@ export default function FASRepository() {
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button>
           <button className="btn-danger" onClick={confirmDelete}>Delete</button>
+        </div>
+      </Modal>
+
+      <Modal open={bulkRemoving} onClose={() => setBulkRemoving(false)} title={`Delete ${selected.size} FAS device(s)?`}>
+        <p className="text-sm text-ink-600">Permanently remove <span className="font-semibold">{selected.size}</span> selected device{selected.size === 1 ? '' : 's'} and their QR codes? This can't be undone.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn-ghost" onClick={() => setBulkRemoving(false)}>Cancel</button>
+          <button className="btn-danger" onClick={confirmBulkDelete} disabled={busy}>{busy ? <Spinner size={16} /> : `Delete ${selected.size}`}</button>
         </div>
       </Modal>
 

@@ -960,25 +960,35 @@ function aedMirror(orgId, orgName, id, a) {
 }
 
 export async function addAed(orgId, orgName, data, actor) {
+  // Records are created WITHOUT a QR — generating one is an admin-only action.
   const ref = doc(aedCol(orgId))
-  const qrToken = generateQrToken()
-  const a = { ...cleanAed(data), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+  const a = { ...cleanAed(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.set(ref, a)
-  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, ref.id, a))
   await batch.commit()
   await logAudit(orgId, actor, 'aed.create', { target: 'aed', targetId: ref.id, targetLabel: `${data.assetId || 'AED'} @ ${data.centerName}`, summary: `AED ${data.assetId || ''} added @ ${data.centerName}` })
-  return { id: ref.id, qrToken }
+  return { id: ref.id }
 }
 
 export async function updateAed(orgId, orgName, id, updates, actor) {
-  const qrToken = updates.qrToken || generateQrToken()
-  const a = { ...cleanAed(updates), qrToken, updatedAt: serverTimestamp() }
+  // Never mints a QR here — only keeps an existing mirror in sync (see generateAedQr).
+  const a = { ...cleanAed(updates), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.update(aedRef(orgId, id), a)
-  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, id, a))
+  if (updates.qrToken) batch.set(qrRef(updates.qrToken), aedMirror(orgId, orgName, id, { ...updates, ...a, qrToken: updates.qrToken }))
   await batch.commit()
   await logAudit(orgId, actor, 'aed.update', { target: 'aed', targetId: id, targetLabel: `${updates.assetId || 'AED'} @ ${updates.centerName}`, summary: 'AED updated' })
+  return updates.qrToken || null
+}
+
+/** Admin-only: mint (or re-use) a QR token for an AED and write its public mirror. */
+export async function generateAedQr(orgId, orgName, asset, actor) {
+  const qrToken = asset.qrToken || generateQrToken()
+  const batch = writeBatch(db)
+  batch.update(aedRef(orgId, asset.id), { qrToken, updatedAt: serverTimestamp() })
+  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, asset.id, { ...asset, qrToken }))
+  await batch.commit()
+  await logAudit(orgId, actor, 'aed.qr_generate', { target: 'aed', targetId: asset.id, targetLabel: `${asset.assetId || 'AED'} @ ${asset.centerName}`, summary: 'QR code generated' })
   return qrToken
 }
 
@@ -986,11 +996,10 @@ export async function updateAed(orgId, orgName, id, updates, actor) {
 export async function serviceAed(orgId, orgName, asset, nextInspection, actor) {
   const today = new Date().toISOString().slice(0, 10)
   const merged = { ...asset, lastInspection: today, nextInspection: nextInspection || '', status: 'ready' }
-  const qrToken = asset.qrToken || generateQrToken()
-  const a = { ...cleanAed(merged), qrToken, updatedAt: serverTimestamp() }
+  const a = { ...cleanAed(merged), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.update(aedRef(orgId, asset.id), a)
-  batch.set(qrRef(qrToken), aedMirror(orgId, orgName, asset.id, a))
+  if (asset.qrToken) batch.set(qrRef(asset.qrToken), aedMirror(orgId, orgName, asset.id, { ...merged, qrToken: asset.qrToken }))
   await batch.commit()
   await logAudit(orgId, actor, 'aed.service', { target: 'aed', targetId: asset.id, targetLabel: `${asset.assetId || 'AED'} @ ${asset.centerName}`, summary: `AED serviced — next inspection ${nextInspection || '—'}` })
 }
@@ -1001,6 +1010,19 @@ export async function deleteAed(orgId, id, qrToken, actor, label) {
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
   await logAudit(orgId, actor, 'aed.delete', { target: 'aed', targetId: id, targetLabel: label || '' })
+}
+
+/** Bulk-delete AEDs (+ remove their QR mirrors) by [{id, qrToken}]. */
+export async function bulkDeleteAeds(orgId, items, actor) {
+  for (let i = 0; i < items.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
+      batch.delete(aedRef(orgId, id))
+      if (qrToken) batch.delete(qrRef(qrToken))
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'aed.bulk_delete', { target: 'aed', summary: `${items.length} AED(s) deleted` })
 }
 
 // ── FAS (Fire Alarm System) device inventory (org-scoped) ─────────────────────
@@ -1040,25 +1062,35 @@ function fasMirror(orgId, orgName, id, a) {
 }
 
 export async function addFas(orgId, orgName, data, actor) {
+  // Records are created WITHOUT a QR — generating one is an admin-only action.
   const ref = doc(fasCol(orgId))
-  const qrToken = generateQrToken()
-  const a = { ...cleanFas(data), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+  const a = { ...cleanFas(data), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.set(ref, a)
-  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.create', { target: 'fas', targetId: ref.id, targetLabel: `${data.deviceId || data.deviceType} @ ${data.centerName}`, summary: `FAS ${data.deviceType} added @ ${data.centerName}` })
-  return { id: ref.id, qrToken }
+  return { id: ref.id }
 }
 
 export async function updateFas(orgId, orgName, id, updates, actor) {
-  const qrToken = updates.qrToken || generateQrToken()
-  const a = { ...cleanFas(updates), qrToken, updatedAt: serverTimestamp() }
+  // Never mints a QR here — only keeps an existing mirror in sync (see generateFasQr).
+  const a = { ...cleanFas(updates), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.update(fasRef(orgId, id), a)
-  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, id, a))
+  if (updates.qrToken) batch.set(qrRef(updates.qrToken), fasMirror(orgId, orgName, id, { ...updates, ...a, qrToken: updates.qrToken }))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: 'FAS device updated' })
+  return updates.qrToken || null
+}
+
+/** Admin-only: mint (or re-use) a QR token for a FAS device and write its public mirror. */
+export async function generateFasQr(orgId, orgName, asset, actor) {
+  const qrToken = asset.qrToken || generateQrToken()
+  const batch = writeBatch(db)
+  batch.update(fasRef(orgId, asset.id), { qrToken, updatedAt: serverTimestamp() })
+  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, asset.id, { ...asset, qrToken }))
+  await batch.commit()
+  await logAudit(orgId, actor, 'fas.qr_generate', { target: 'fas', targetId: asset.id, targetLabel: `${asset.deviceId || asset.deviceType} @ ${asset.centerName}`, summary: 'QR code generated' })
   return qrToken
 }
 
@@ -1066,11 +1098,10 @@ export async function updateFas(orgId, orgName, id, updates, actor) {
 export async function serviceFas(orgId, orgName, asset, nextService, actor) {
   const today = new Date().toISOString().slice(0, 10)
   const merged = { ...asset, lastService: today, nextService: nextService || '', status: 'operational' }
-  const qrToken = asset.qrToken || generateQrToken()
-  const a = { ...cleanFas(merged), qrToken, updatedAt: serverTimestamp() }
+  const a = { ...cleanFas(merged), updatedAt: serverTimestamp() }
   const batch = writeBatch(db)
   batch.update(fasRef(orgId, asset.id), a)
-  batch.set(qrRef(qrToken), fasMirror(orgId, orgName, asset.id, a))
+  if (asset.qrToken) batch.set(qrRef(asset.qrToken), fasMirror(orgId, orgName, asset.id, { ...merged, qrToken: asset.qrToken }))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.service', { target: 'fas', targetId: asset.id, targetLabel: `${asset.deviceId || asset.deviceType} @ ${asset.centerName}`, summary: `FAS serviced — next service ${nextService || '—'}` })
 }
@@ -1081,6 +1112,19 @@ export async function deleteFas(orgId, id, qrToken, actor, label) {
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.delete', { target: 'fas', targetId: id, targetLabel: label || '' })
+}
+
+/** Bulk-delete FAS devices (+ remove their QR mirrors) by [{id, qrToken}]. */
+export async function bulkDeleteFas(orgId, items, actor) {
+  for (let i = 0; i < items.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
+      batch.delete(fasRef(orgId, id))
+      if (qrToken) batch.delete(qrRef(qrToken))
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'fas.bulk_delete', { target: 'fas', summary: `${items.length} FAS device(s) deleted` })
 }
 
 // ── AED / FAS public defect reports (submitted from a QR scan) ─────────────────

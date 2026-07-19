@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { HeartPulse, ShieldCheck, Wrench, AlertOctagon, BatteryWarning, Zap, CalendarClock, ArrowRight } from 'lucide-react'
+import { HeartPulse, ShieldCheck, Wrench, AlertOctagon, BatteryWarning, Zap, CalendarClock, ArrowRight, AlertTriangle } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { aedSummary, aedCondition } from '../lib/assetLogic'
 import { AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
+import { HealthBar, OpenDefectsPanel } from '../components/AssetHealth'
 
 function Stat({ icon: Icon, label, value, color }) {
   return (
@@ -21,9 +22,10 @@ function Stat({ icon: Icon, label, value, color }) {
 }
 
 export default function AEDDashboard() {
-  const { aeds, loading } = useFleet()
+  const { aeds, pendingReports, loading } = useFleet()
   const today = useMemo(() => new Date(), [])
   const s = useMemo(() => aedSummary(aeds, today), [aeds, today])
+  const defects = useMemo(() => pendingReports.filter((r) => r.assetKind === 'aed'), [pendingReports])
 
   const bySite = useMemo(() => {
     const m = new Map()
@@ -59,7 +61,20 @@ export default function AEDDashboard() {
             <Stat icon={BatteryWarning} label="Battery expiring ≤30d" value={s.batteryExpiring} color="#ea580c" />
             <Stat icon={Zap} label="Pads expiring ≤30d" value={s.padExpiring} color="#db2777" />
             <Stat icon={CalendarClock} label="Inspection due ≤30d" value={s.inspectionDue} color="#b45309" />
+            <Stat icon={AlertTriangle} label="Data not available" value={s.incomplete} color="#f59e0b" />
             <Stat icon={ShieldCheck} label="Sites covered" value={bySite.length} color="#0ea5e9" />
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <HealthBar
+              title="AED readiness"
+              segments={[
+                { label: 'Ready', value: s.ready, color: '#16a34a' },
+                { label: 'Service due', value: s.due, color: '#f59e0b' },
+                { label: 'Out of service', value: s.outOfService, color: '#dc2626' },
+              ]}
+            />
+            <OpenDefectsPanel defects={defects} hint="AED defects reported from a QR scan appear here for approval." />
           </div>
 
           <div className="card mt-6 overflow-x-auto">

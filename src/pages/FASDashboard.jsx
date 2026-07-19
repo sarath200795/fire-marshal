@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { BellRing, ShieldCheck, Wrench, AlertOctagon, CalendarClock, ArrowRight } from 'lucide-react'
+import { BellRing, ShieldCheck, Wrench, AlertOctagon, CalendarClock, ArrowRight, AlertTriangle } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { fasSummary, fasCondition } from '../lib/assetLogic'
 import { FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
+import { HealthBar, OpenDefectsPanel } from '../components/AssetHealth'
 
 function Stat({ icon: Icon, label, value, color }) {
   return (
@@ -16,9 +17,10 @@ function Stat({ icon: Icon, label, value, color }) {
 }
 
 export default function FASDashboard() {
-  const { fas, loading } = useFleet()
+  const { fas, pendingReports, loading } = useFleet()
   const today = useMemo(() => new Date(), [])
   const s = useMemo(() => fasSummary(fas, today), [fas, today])
+  const defects = useMemo(() => pendingReports.filter((r) => r.assetKind === 'fas'), [pendingReports])
 
   const byType = useMemo(() => {
     const m = new Map()
@@ -55,12 +57,25 @@ export default function FASDashboard() {
           action={<Link to="/app/fas" className="btn-primary">Go to FAS Repository</Link>} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
             <Stat icon={BellRing} label="Total devices" value={s.total} color="#6366f1" />
             <Stat icon={ShieldCheck} label="Operational" value={s.operational} color="#16a34a" />
             <Stat icon={Wrench} label="Service due" value={s.due} color="#f59e0b" />
             <Stat icon={AlertOctagon} label="Faulty" value={s.faulty} color="#dc2626" />
             <Stat icon={CalendarClock} label="Service due ≤30d" value={s.serviceDue} color="#b45309" />
+            <Stat icon={AlertTriangle} label="Data not available" value={s.incomplete} color="#f59e0b" />
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <HealthBar
+              title="FAS health"
+              segments={[
+                { label: 'Operational', value: s.operational, color: '#16a34a' },
+                { label: 'Service due', value: s.due, color: '#f59e0b' },
+                { label: 'Faulty', value: s.faulty, color: '#dc2626' },
+              ]}
+            />
+            <OpenDefectsPanel defects={defects} hint="FAS defects reported from a QR scan appear here for approval." />
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">

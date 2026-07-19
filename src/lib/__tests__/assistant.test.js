@@ -115,6 +115,14 @@ describe('page helpers', () => {
   it('pageGuide resolves a known page', () => {
     expect(pageGuide('/app/refill-due').title).toBe('To Be Refilled')
   })
+  it('pageGuide covers the AED & FAS pages (Sam helps there too)', () => {
+    expect(pageGuide('/app/aed').title).toBe('AED Repository')
+    expect(pageGuide('/app/aed-dashboard').title).toBe('AED Dashboard')
+    expect(pageGuide('/app/fas').title).toBe('FAS Repository')
+    expect(pageGuide('/app/fas-dashboard').title).toBe('FAS Dashboard')
+    expect(suggestedQuestions('/app/aed').length).toBeGreaterThan(0)
+    expect(suggestedQuestions('/app/fas').length).toBeGreaterThan(0)
+  })
   it('buildAIContext exposes totals + breakdowns', () => {
     const c = buildAIContext(ctx())
     expect(c.totals.extinguishers).toBe(2)
