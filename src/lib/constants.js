@@ -189,6 +189,7 @@ export const FAS_DEFECTS = [
   'Manual Call Point (MCP) Faulty',
   'Hooter Not Working',
   'Isolated Zone',
+  'Other',
 ]
 
 // Asset-kind → its public-reportable defect list.
