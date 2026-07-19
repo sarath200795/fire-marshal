@@ -1012,6 +1012,19 @@ export async function deleteAed(orgId, id, qrToken, actor, label) {
   await logAudit(orgId, actor, 'aed.delete', { target: 'aed', targetId: id, targetLabel: label || '' })
 }
 
+/** Bulk-delete AEDs (+ remove their QR mirrors) by [{id, qrToken}]. */
+export async function bulkDeleteAeds(orgId, items, actor) {
+  for (let i = 0; i < items.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
+      batch.delete(aedRef(orgId, id))
+      if (qrToken) batch.delete(qrRef(qrToken))
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'aed.bulk_delete', { target: 'aed', summary: `${items.length} AED(s) deleted` })
+}
+
 // ── FAS (Fire Alarm System) device inventory (org-scoped) ─────────────────────
 export function subscribeFas(orgId, cb) {
   const q = query(fasCol(orgId), orderBy('createdAt', 'desc'))
@@ -1099,6 +1112,19 @@ export async function deleteFas(orgId, id, qrToken, actor, label) {
   if (qrToken) batch.delete(qrRef(qrToken))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.delete', { target: 'fas', targetId: id, targetLabel: label || '' })
+}
+
+/** Bulk-delete FAS devices (+ remove their QR mirrors) by [{id, qrToken}]. */
+export async function bulkDeleteFas(orgId, items, actor) {
+  for (let i = 0; i < items.length; i += BULK_CHUNK) {
+    const batch = writeBatch(db)
+    for (const { id, qrToken } of items.slice(i, i + BULK_CHUNK)) {
+      batch.delete(fasRef(orgId, id))
+      if (qrToken) batch.delete(qrRef(qrToken))
+    }
+    await batch.commit()
+  }
+  await logAudit(orgId, actor, 'fas.bulk_delete', { target: 'fas', summary: `${items.length} FAS device(s) deleted` })
 }
 
 // ── AED / FAS public defect reports (submitted from a QR scan) ─────────────────

@@ -132,7 +132,7 @@ const GUIDES = {
     tips: [
       'Every defibrillator lives here — each gets a unique auto ID (AED-0001…). Site is picked from your 1P/2P list.',
       'Add records anytime, even without full details; incomplete ones show a "Data N/A" flag. Log inspections with the wrench.',
-      'Only an admin can generate a QR code (the QR button). Once created, anyone can view it; scanning lets staff report a defect.',
+      'Tick the checkboxes to select rows and delete them in bulk. Only an admin can generate a QR code (the QR button) — once created, anyone can view it and scanning lets staff report a defect.',
     ],
   },
   'fas-dashboard': {
@@ -148,7 +148,7 @@ const GUIDES = {
     tips: [
       'Fire-alarm panels and devices live here — each gets a unique auto ID (FAS-0001…). Site is picked from your 1P/2P list.',
       'Add records anytime; incomplete ones show a "Data N/A" flag. Log a service with the wrench to reset the next-due date.',
-      'Only an admin can generate a QR code. Scanning a device QR lets staff report battery, UPS, hooter and zone faults.',
+      'Tick the checkboxes to select rows and delete them in bulk. Only an admin can generate a QR code; scanning a device QR lets staff report battery, UPS, hooter and zone faults.',
     ],
   },
 }
