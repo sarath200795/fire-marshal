@@ -4,7 +4,7 @@ import { BellRing, ShieldCheck, Wrench, AlertOctagon, CalendarClock, ArrowRight,
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { fasSummary, fasCondition } from '../lib/assetLogic'
-import { FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
+import { FAS_STATUS_LABEL, FAS_STATUS_COLOR, FAS_DEVICE_TYPES, FAS_STATUS } from '../lib/constants'
 import { HealthBar, OpenDefectsPanel } from '../components/AssetHealth'
 
 function Stat({ icon: Icon, label, value, color }) {
@@ -22,15 +22,18 @@ export default function FASDashboard() {
   const s = useMemo(() => fasSummary(fas, today), [fas, today])
   const defects = useMemo(() => pendingReports.filter((r) => r.assetKind === 'fas'), [pendingReports])
 
+  // Always list the standard device types (Control Panel, Smoke/Heat Detector,
+  // Manual Call Point, Hooter…) so their counts + faults are visible even at 0.
   const byType = useMemo(() => {
-    const m = new Map()
+    const m = new Map(FAS_DEVICE_TYPES.map((t) => [t, { type: t, total: 0, faulty: 0, attention: 0 }]))
     for (const a of fas) {
       const t = a.deviceType || 'Other'
-      if (!m.has(t)) m.set(t, { type: t, total: 0, attention: 0 })
+      if (!m.has(t)) m.set(t, { type: t, total: 0, faulty: 0, attention: 0 })
       const row = m.get(t); row.total++
+      if (a.status === FAS_STATUS.FAULTY) row.faulty++
       const c = fasCondition(a, today); if (c.due || c.expired) row.attention++
     }
-    return Array.from(m.values()).sort((a, b) => b.total - a.total)
+    return Array.from(m.values()).sort((a, b) => b.total - a.total || a.type.localeCompare(b.type))
   }, [fas, today])
 
   const bySite = useMemo(() => {
@@ -82,12 +85,16 @@ export default function FASDashboard() {
             <div className="card overflow-x-auto">
               <p className="border-b border-clay-200/60 px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-500">By device type</p>
               <table className="w-full text-sm">
+                <thead className="bg-clay-100/50 text-left text-[11px] uppercase tracking-wide text-ink-500">
+                  <tr><th className="px-4 py-2">Type</th><th className="px-4 py-2 text-center">Count</th><th className="px-4 py-2 text-center">Faulty</th><th className="px-4 py-2 text-center">Attention</th></tr>
+                </thead>
                 <tbody className="divide-y divide-clay-200/60">
                   {byType.map((r) => (
-                    <tr key={r.type} className="hover:bg-ink-50/70">
+                    <tr key={r.type} className={`hover:bg-ink-50/70 ${r.total === 0 ? 'text-ink-400' : ''}`}>
                       <td className="px-4 py-2.5 font-semibold text-ink-800">{r.type}</td>
                       <td className="px-4 py-2.5 text-center text-ink-600">{r.total}</td>
-                      <td className="px-4 py-2.5 text-center">{r.attention > 0 ? <span className="font-bold text-amber-600">{r.attention} ⚠</span> : <span className="text-green-600">OK</span>}</td>
+                      <td className="px-4 py-2.5 text-center">{r.faulty > 0 ? <span className="font-bold text-red-600">{r.faulty}</span> : <span className="text-ink-400">0</span>}</td>
+                      <td className="px-4 py-2.5 text-center">{r.attention > 0 ? <span className="font-bold text-amber-600">{r.attention} ⚠</span> : (r.total > 0 ? <span className="text-green-600">OK</span> : <span className="text-ink-300">—</span>)}</td>
                     </tr>
                   ))}
                 </tbody>

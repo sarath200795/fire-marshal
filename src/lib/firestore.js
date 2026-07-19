@@ -1190,15 +1190,22 @@ export async function bulkAddAeds(orgId, orgName, rows, actor) {
 }
 
 export async function bulkAddFas(orgId, orgName, rows, actor) {
+  // A QR is only minted for Control Panels — detectors, MCPs and hooters are
+  // created without one (the panel's QR represents the whole system).
   let created = 0
   for (let i = 0; i < rows.length; i += BULK_CHUNK) {
     const batch = writeBatch(db)
     for (const row of rows.slice(i, i + BULK_CHUNK)) {
       const ref = doc(fasCol(orgId))
-      const qrToken = generateQrToken()
-      const a = { ...cleanFas(row), qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
-      batch.set(ref, a)
-      batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
+      const clean = cleanFas(row)
+      if (clean.deviceType === 'Control Panel') {
+        const qrToken = generateQrToken()
+        const a = { ...clean, qrToken, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+        batch.set(ref, a)
+        batch.set(qrRef(qrToken), fasMirror(orgId, orgName, ref.id, a))
+      } else {
+        batch.set(ref, { ...clean, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+      }
       created++
     }
     await batch.commit()
