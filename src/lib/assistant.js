@@ -14,6 +14,10 @@ import { DEFECT_BY_KEY, STATUS_LABEL } from './constants'
 import { AUDIT } from './audit'
 
 const pageOf = (pathname = '') => {
+  if (pathname.includes('/aed-dashboard')) return 'aed-dashboard'
+  if (pathname.includes('/fas-dashboard')) return 'fas-dashboard'
+  if (pathname.includes('/aed')) return 'aed'
+  if (pathname.includes('/fas')) return 'fas'
   if (pathname.includes('/repository')) return 'repository'
   if (pathname.includes('/refill-due')) return 'refill-due'
   if (pathname.includes('/in-process')) return 'in-process'
@@ -115,6 +119,38 @@ const GUIDES = {
     title: 'Team & Approvals',
     tips: ['Approve teammates joining your org and manage roles. Use "List my organization" to make it joinable at signup.'],
   },
+  'aed-dashboard': {
+    title: 'AED Dashboard',
+    tips: [
+      'Defibrillator readiness at a glance — Ready, Service due, Out of service, battery/pad expiring and inspection due.',
+      '"Data not available" counts AEDs still missing their site, battery or pad expiry — fill those in to clear the flag.',
+      'The Open defects panel lists AEDs reported via a QR scan and awaiting approval; the by-site table shows where attention is needed.',
+    ],
+  },
+  aed: {
+    title: 'AED Repository',
+    tips: [
+      'Every defibrillator lives here — each gets a unique auto ID (AED-0001…). Site is picked from your 1P/2P list.',
+      'Add records anytime, even without full details; incomplete ones show a "Data N/A" flag. Log inspections with the wrench.',
+      'Only an admin can generate a QR code (the QR button). Once created, anyone can view it; scanning lets staff report a defect.',
+    ],
+  },
+  'fas-dashboard': {
+    title: 'FAS Dashboard',
+    tips: [
+      'Fire-alarm system health across sites — Operational, Service due and Faulty devices, plus service-due-soon.',
+      '"Data not available" counts devices still missing their site. Open defects lists QR-scan reports awaiting approval.',
+      'The by-type and by-site tables show where faults and overdue services cluster.',
+    ],
+  },
+  fas: {
+    title: 'FAS Repository',
+    tips: [
+      'Fire-alarm panels and devices live here — each gets a unique auto ID (FAS-0001…). Site is picked from your 1P/2P list.',
+      'Add records anytime; incomplete ones show a "Data N/A" flag. Log a service with the wrench to reset the next-due date.',
+      'Only an admin can generate a QR code. Scanning a device QR lets staff report battery, UPS, hooter and zone faults.',
+    ],
+  },
 }
 
 export function pageGuide(pathname) {
@@ -132,6 +168,10 @@ const PAGE_QS = {
   add: ['Which extinguisher for an electrical fire?', 'How often should extinguishers be serviced?'],
   signages: ['How many signage records?', 'Which sites are missing signage?', 'Is FERP on all floors?'],
   'mock-drills': ['How many mock drills?', 'How did our last drill go?', "What's our average drill score?"],
+  aed: ['How many AEDs?', 'Which AEDs need attention?', 'How do I generate a QR code?'],
+  'aed-dashboard': ['How many AEDs are ready?', 'Which AEDs are out of service?', 'What battery/pads are expiring?'],
+  fas: ['How many FAS devices?', 'Which panels are faulty?', 'How do I generate a QR code?'],
+  'fas-dashboard': ['How many FAS devices are operational?', 'Which are faulty?', 'What service is due?'],
 }
 export function suggestedQuestions(pathname) {
   const p = pageOf(pathname)

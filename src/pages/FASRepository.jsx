@@ -7,11 +7,11 @@ import { format } from 'date-fns'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas } from '../lib/firestore'
+import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas, generateFasQr } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
-import { dueState, fasColor, fasIncomplete } from '../lib/assetLogic'
+import { dueState, fasColor, fasIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
@@ -59,7 +59,7 @@ function DateCell({ value }) {
 }
 
 export default function FASRepository() {
-  const { orgId, orgName, profile } = useAuth()
+  const { orgId, orgName, profile, isAdmin } = useAuth()
   const { fas, sites, loading } = useFleet()
   const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
@@ -82,13 +82,17 @@ export default function FASRepository() {
     return pickSites.filter((s) => !have.has(s))
   }, [pickSites, fas])
 
-  // One-click: create a FAS Panel (with QR code) for every 1P/2P site missing one.
+  // Open the Add form with the next unique device ID pre-assigned.
+  const openAdd = () => setEditing({ ...EMPTY, deviceId: nextAssetId('FAS', fas, 'deviceId') })
+
+  // One-click (admin): create a FAS Panel (with QR code) for every 1P/2P site missing one.
   const generateAll = async () => {
     if (!missingSites.length) return
     if (!window.confirm(`Generate a FAS Panel with a QR code for ${missingSites.length} site(s)?`)) return
     setBusy(true)
     try {
-      const rows = missingSites.map((s) => ({ centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
+      const base = highestAssetSeq('FAS', fas, 'deviceId')
+      const rows = missingSites.map((s, i) => ({ deviceId: formatAssetId('FAS', base + 1 + i), centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', deviceType: 'Control Panel', status: FAS_STATUS.OPERATIONAL }))
       const res = await bulkAddFas(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} FAS panel(s) with QR codes`)
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }
@@ -137,12 +141,13 @@ export default function FASRepository() {
       toast.success('FAS device deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
   }
-  // View the QR — generating (and persisting) one first if the record lacks it.
+  // View the QR — or, for admins, mint one first if the record lacks it.
   const showQr = async (a) => {
     if (a.qrToken) { setQrFor(a); return }
+    if (!isAdmin) { toast.error('Only an admin can generate QR codes'); return }
     setBusy(true)
     try {
-      const token = await updateFas(orgId, orgName, a.id, a, { uid: profile?.uid, name: profile?.name })
+      const token = await generateFasQr(orgId, orgName, a, { uid: profile?.uid, name: profile?.name })
       setQrFor({ ...a, qrToken: token })
       toast.success('QR code generated')
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }
@@ -170,14 +175,14 @@ export default function FASRepository() {
   return (
     <div>
       <PageHeader title="FAS Repository" subtitle={`${visible.length}${anyActive ? ` of ${fas.length}` : ''} fire-alarm device${visible.length === 1 ? '' : 's'}`} icon={BellRing}>
-        {missingSites.length > 0 && (
+        {isAdmin && missingSites.length > 0 && (
           <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create a FAS Panel with a QR code for every 1P/2P site that doesn't have one">
             <QrCode size={16} /> Generate panels for 1P/2P sites ({missingSites.length})
           </button>
         )}
-        <Link to="/app/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
+        {isAdmin && <Link to="/app/asset-bulk-upload" state={{ kind: 'fas' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
         <button className="btn-soft" onClick={doExport} disabled={!fas.length}><Download size={16} /> Export</button>
-        <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add device</button>
+        <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add device</button>
       </PageHeader>
 
       {!loading && fas.length > 0 && (
@@ -200,7 +205,7 @@ export default function FASRepository() {
         <div className="grid place-items-center py-20"><Spinner size={28} /></div>
       ) : fas.length === 0 ? (
         <EmptyState icon={BellRing} title="No FAS devices yet" hint="Add fire-alarm panels and devices to track service due dates and faults."
-          action={<button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add device</button>} />
+          action={<button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add device</button>} />
       ) : visible.length === 0 ? (
         <EmptyState icon={Filter} title="No matches" hint="Try adjusting the filters." action={<button className="btn-ghost" onClick={clear}><X size={15} /> Clear filters</button>} />
       ) : (
@@ -236,7 +241,7 @@ export default function FASRepository() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log service"><Wrench size={14} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy} title={a.qrToken ? 'View QR code' : 'Generate QR code'}><QrCode size={15} /></button>
+                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} title={a.qrToken ? 'View QR code' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes')}><QrCode size={15} /></button>
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>
@@ -263,7 +268,7 @@ export default function FASRepository() {
         {editing && (
           <form onSubmit={save} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Device ID / Tag"><input className="input" value={editing.deviceId} onChange={set('deviceId')} placeholder="e.g. MCP-03" /></Field>
+              <Field label="Device ID (auto)"><input className="input bg-ink-50 text-ink-500" value={editing.deviceId} readOnly title="Automatically assigned — unique per device" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
               <Field label="Site / Center name">
                 <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} placeholder="e.g. Tower B" />

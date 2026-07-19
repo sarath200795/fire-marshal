@@ -8,6 +8,24 @@ import { AED_STATUS, FAS_STATUS } from './constants'
 
 export const DUE_SOON = 30
 
+// ── Unique asset IDs ──────────────────────────────────────────────────────────
+// Sequential, human-readable IDs like "AED-0001" / "FAS-0001". Take the highest
+// numeric suffix already in use for the prefix and add one, so every asset gets
+// a unique, stable identifier without the user having to invent one.
+export function highestAssetSeq(prefix, list, field) {
+  let max = 0
+  for (const a of list || []) {
+    const v = String(a?.[field] || '')
+    const m = v.match(/-(\d+)$/)
+    if (m && v.startsWith(`${prefix}-`)) max = Math.max(max, parseInt(m[1], 10))
+  }
+  return max
+}
+export function formatAssetId(prefix, n) { return `${prefix}-${String(n).padStart(4, '0')}` }
+export function nextAssetId(prefix, list, field) {
+  return formatAssetId(prefix, highestAssetSeq(prefix, list, field) + 1)
+}
+
 // 'expired' | 'due' (within DUE_SOON days) | 'ok' | null (no/invalid date)
 export function dueState(value, today = new Date()) {
   const d = daysUntil(value, today)

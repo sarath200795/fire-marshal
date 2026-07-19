@@ -6,12 +6,12 @@ import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
 import { useFleet } from '../context/FleetContext'
-import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds } from '../lib/firestore'
+import { addAed, updateAed, deleteAed, serviceAed, bulkAddAeds, generateAedQr } from '../lib/firestore'
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
 import { format } from 'date-fns'
-import { dueState, aedColor, aedIncomplete } from '../lib/assetLogic'
+import { dueState, aedColor, aedIncomplete, nextAssetId, highestAssetSeq, formatAssetId } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, AED_STATUS, AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
 
@@ -70,7 +70,7 @@ function DateCell({ value }) {
 }
 
 export default function AEDRepository() {
-  const { orgId, orgName, profile } = useAuth()
+  const { orgId, orgName, profile, isAdmin } = useAuth()
   const { aeds, sites, loading } = useFleet()
   const siteMeta = useSiteMeta()
   const today = useMemo(() => new Date(), [])
@@ -93,13 +93,17 @@ export default function AEDRepository() {
     return pickSites.filter((s) => !have.has(s))
   }, [pickSites, aeds])
 
-  // One-click: create an AED (with QR code) for every 1P/2P site missing one.
+  // Open the Add form with the next unique asset ID pre-assigned.
+  const openAdd = () => setEditing({ ...EMPTY, assetId: nextAssetId('AED', aeds, 'assetId') })
+
+  // One-click (admin): create an AED (with QR code) for every 1P/2P site missing one.
   const generateAll = async () => {
     if (!missingSites.length) return
     if (!window.confirm(`Generate an AED with a QR code for ${missingSites.length} site(s)? You can add battery/pad expiry dates afterwards.`)) return
     setBusy(true)
     try {
-      const rows = missingSites.map((s) => ({ centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
+      const base = highestAssetSeq('AED', aeds, 'assetId')
+      const rows = missingSites.map((s, i) => ({ assetId: formatAssetId('AED', base + 1 + i), centerName: s, region: siteMeta[s]?.region || '', entity: siteMeta[s]?.entity || '', status: AED_STATUS.READY }))
       const res = await bulkAddAeds(orgId, orgName, rows, { uid: profile?.uid, name: profile?.name })
       toast.success(`Generated ${res.created} AED(s) with QR codes`)
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }
@@ -149,12 +153,13 @@ export default function AEDRepository() {
       toast.success('AED deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
   }
-  // View the QR — generating (and persisting) one first if the record lacks it.
+  // View the QR — or, for admins, mint one first if the record lacks it.
   const showQr = async (a) => {
     if (a.qrToken) { setQrFor(a); return }
+    if (!isAdmin) { toast.error('Only an admin can generate QR codes'); return }
     setBusy(true)
     try {
-      const token = await updateAed(orgId, orgName, a.id, a, { uid: profile?.uid, name: profile?.name })
+      const token = await generateAedQr(orgId, orgName, a, { uid: profile?.uid, name: profile?.name })
       setQrFor({ ...a, qrToken: token })
       toast.success('QR code generated')
     } catch (e) { toast.error(e.message) } finally { setBusy(false) }
@@ -183,14 +188,14 @@ export default function AEDRepository() {
   return (
     <div>
       <PageHeader title="AED Repository" subtitle={`${visible.length}${anyActive ? ` of ${aeds.length}` : ''} defibrillator${visible.length === 1 ? '' : 's'}`} icon={HeartPulse}>
-        {missingSites.length > 0 && (
+        {isAdmin && missingSites.length > 0 && (
           <button className="btn-soft" onClick={generateAll} disabled={busy} title="Create an AED with a QR code for every 1P/2P site that doesn't have one">
             <QrCode size={16} /> Generate for 1P/2P sites ({missingSites.length})
           </button>
         )}
-        <Link to="/app/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>
+        {isAdmin && <Link to="/app/asset-bulk-upload" state={{ kind: 'aed' }} className="btn-soft"><Upload size={16} /> Bulk upload</Link>}
         <button className="btn-soft" onClick={doExport} disabled={!aeds.length}><Download size={16} /> Export</button>
-        <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add AED</button>
+        <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add AED</button>
       </PageHeader>
 
       {!loading && aeds.length > 0 && (
@@ -213,7 +218,7 @@ export default function AEDRepository() {
         <div className="grid place-items-center py-20"><Spinner size={28} /></div>
       ) : aeds.length === 0 ? (
         <EmptyState icon={HeartPulse} title="No AEDs yet" hint="Add your first defibrillator to start tracking battery, pad and inspection due dates."
-          action={<button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}><Plus size={16} /> Add AED</button>} />
+          action={<button className="btn-primary" onClick={openAdd}><Plus size={16} /> Add AED</button>} />
       ) : visible.length === 0 ? (
         <EmptyState icon={Filter} title="No matches" hint="Try adjusting the filters." action={<button className="btn-ghost" onClick={clear}><X size={15} /> Clear filters</button>} />
       ) : (
@@ -250,7 +255,7 @@ export default function AEDRepository() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log inspection / service"><Wrench size={14} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy} title={a.qrToken ? 'View QR code' : 'Generate QR code'}><QrCode size={15} /></button>
+                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} title={a.qrToken ? 'View QR code' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes')}><QrCode size={15} /></button>
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>
@@ -277,7 +282,7 @@ export default function AEDRepository() {
         {editing && (
           <form onSubmit={save} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Asset ID / Serial"><input className="input" value={editing.assetId} onChange={set('assetId')} placeholder="e.g. AED-001" /></Field>
+              <Field label="Asset ID (auto)"><input className="input bg-ink-50 text-ink-500" value={editing.assetId} readOnly title="Automatically assigned — unique per AED" /></Field>
               <Field label="Site / Center name">
                 <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} placeholder="e.g. Tower B - Lobby" />
               </Field>

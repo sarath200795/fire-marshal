@@ -155,9 +155,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Public QR mirror — world-readable. A QR may only be CREATED by an org
+    // admin; members can keep an existing mirror in sync (status/detail edits).
     match /qr/{token} {
       allow read: if true;
-      allow create: if isApprovedMemberOf(request.resource.data.orgId) && notDemo();
+      allow create: if isAdminOf(request.resource.data.orgId) && notDemo();
       allow update, delete: if isApprovedMemberOf(resource.data.orgId) && notDemo();
     }
   }
