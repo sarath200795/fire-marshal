@@ -136,6 +136,16 @@ export default function FASRepository() {
       toast.success('FAS device deleted')
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
   }
+  // View the QR — generating (and persisting) one first if the record lacks it.
+  const showQr = async (a) => {
+    if (a.qrToken) { setQrFor(a); return }
+    setBusy(true)
+    try {
+      const token = await updateFas(orgId, orgName, a.id, a, { uid: profile?.uid, name: profile?.name })
+      setQrFor({ ...a, qrToken: token })
+      toast.success('QR code generated')
+    } catch (e) { toast.error(e.message) } finally { setBusy(false) }
+  }
   const openService = (a) => { setServiceFor(a); setNextDate(a.nextService || '') }
   const confirmService = async () => {
     setBusy(true)
@@ -218,7 +228,7 @@ export default function FASRepository() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log service"><Wrench size={14} /></button>
-                        {a.qrToken && <button className="btn-soft px-2 py-1.5" onClick={() => setQrFor(a)} title="View QR code"><QrCode size={15} /></button>}
+                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy} title={a.qrToken ? 'View QR code' : 'Generate QR code'}><QrCode size={15} /></button>
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>

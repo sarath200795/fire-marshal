@@ -979,6 +979,7 @@ export async function updateAed(orgId, orgName, id, updates, actor) {
   batch.set(qrRef(qrToken), aedMirror(orgId, orgName, id, a))
   await batch.commit()
   await logAudit(orgId, actor, 'aed.update', { target: 'aed', targetId: id, targetLabel: `${updates.assetId || 'AED'} @ ${updates.centerName}`, summary: 'AED updated' })
+  return qrToken
 }
 
 /** Log a service/inspection: stamps last inspection today, sets the next due, marks Ready. */
@@ -1058,6 +1059,7 @@ export async function updateFas(orgId, orgName, id, updates, actor) {
   batch.set(qrRef(qrToken), fasMirror(orgId, orgName, id, a))
   await batch.commit()
   await logAudit(orgId, actor, 'fas.update', { target: 'fas', targetId: id, targetLabel: `${updates.deviceId || updates.deviceType} @ ${updates.centerName}`, summary: 'FAS device updated' })
+  return qrToken
 }
 
 /** Log a service: stamps last service today, sets the next due, marks Operational. */
