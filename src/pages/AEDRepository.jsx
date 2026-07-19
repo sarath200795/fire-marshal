@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload } from 'lucide-react'
+import { HeartPulse, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { PageHeader, EmptyState, Modal, Badge, Spinner } from '../components/ui'
@@ -11,7 +11,7 @@ import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
 import { format } from 'date-fns'
-import { dueState, aedColor } from '../lib/assetLogic'
+import { dueState, aedColor, aedIncomplete } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, AED_STATUS, AED_STATUS_LABEL, AED_STATUS_COLOR } from '../lib/constants'
 
@@ -133,7 +133,8 @@ export default function AEDRepository() {
 
   const save = async (e) => {
     e.preventDefault()
-    if (!editing.centerName.trim()) return toast.error('Site (center name) is required')
+    // Details can be filled in later — records save even when incomplete
+    // (they're flagged as "data not available" on the dashboard/repository).
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
@@ -230,7 +231,14 @@ export default function AEDRepository() {
                 {pageItems.map((a) => (
                   <tr key={a.id} className="hover:bg-ink-50/70" style={{ boxShadow: `inset 4px 0 0 ${aedColor(a, today)}` }}>
                     <td className="px-4 py-3">
-                      <div className="font-bold text-ink-900">{a.assetId || '—'}</div>
+                      <div className="flex items-center gap-1.5 font-bold text-ink-900">
+                        {a.assetId || '—'}
+                        {aedIncomplete(a) && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Data not available — battery/pad expiry or site still need entering">
+                            <AlertTriangle size={11} /> Data N/A
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-ink-500">{[a.brand, a.model].filter(Boolean).join(' ') || '—'}</div>
                     </td>
                     <td className="px-4 py-3 text-ink-700">{a.centerName}{a.location ? <span className="block text-xs text-ink-400">{a.location}</span> : null}</td>
@@ -270,8 +278,8 @@ export default function AEDRepository() {
           <form onSubmit={save} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Asset ID / Serial"><input className="input" value={editing.assetId} onChange={set('assetId')} placeholder="e.g. AED-001" /></Field>
-              <Field label="Site / Center name *">
-                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} required placeholder="e.g. Tower B - Lobby" />
+              <Field label="Site / Center name">
+                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} placeholder="e.g. Tower B - Lobby" />
               </Field>
               <Field label="Brand"><input className="input" value={editing.brand} onChange={set('brand')} placeholder="e.g. Philips" /></Field>
               <Field label="Model"><input className="input" value={editing.model} onChange={set('model')} placeholder="e.g. HeartStart FRx" /></Field>

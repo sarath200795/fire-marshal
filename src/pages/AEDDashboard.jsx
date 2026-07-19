@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { HeartPulse, ShieldCheck, Wrench, AlertOctagon, BatteryWarning, Zap, CalendarClock, ArrowRight } from 'lucide-react'
+import { HeartPulse, ShieldCheck, Wrench, AlertOctagon, BatteryWarning, Zap, CalendarClock, ArrowRight, AlertTriangle } from 'lucide-react'
 import { PageHeader, EmptyState, Spinner } from '../components/ui'
 import { useFleet } from '../context/FleetContext'
 import { aedSummary, aedCondition } from '../lib/assetLogic'
@@ -59,6 +59,7 @@ export default function AEDDashboard() {
             <Stat icon={BatteryWarning} label="Battery expiring ≤30d" value={s.batteryExpiring} color="#ea580c" />
             <Stat icon={Zap} label="Pads expiring ≤30d" value={s.padExpiring} color="#db2777" />
             <Stat icon={CalendarClock} label="Inspection due ≤30d" value={s.inspectionDue} color="#b45309" />
+            <Stat icon={AlertTriangle} label="Data not available" value={s.incomplete} color="#f59e0b" />
             <Stat icon={ShieldCheck} label="Sites covered" value={bySite.length} color="#0ea5e9" />
           </div>
 

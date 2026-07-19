@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload } from 'lucide-react'
+import { BellRing, Plus, Pencil, Trash2, Search, Filter, X, Download, QrCode, Wrench, Upload, AlertTriangle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -11,7 +11,7 @@ import { addFas, updateFas, deleteFas, serviceFas, bulkAddFas } from '../lib/fir
 import { exportRows } from '../lib/exporter'
 import { publicQrUrl } from '../lib/qr'
 import SitePicker from '../components/SitePicker'
-import { dueState, fasColor } from '../lib/assetLogic'
+import { dueState, fasColor, fasIncomplete } from '../lib/assetLogic'
 import { toDate } from '../lib/extinguisherLogic'
 import { REGIONS, ENTITIES, FAS_DEVICE_TYPES, FAS_STATUS, FAS_STATUS_LABEL, FAS_STATUS_COLOR } from '../lib/constants'
 
@@ -121,7 +121,8 @@ export default function FASRepository() {
 
   const save = async (e) => {
     e.preventDefault()
-    if (!editing.centerName.trim()) return toast.error('Site (center name) is required')
+    // Details can be filled in later — records save even when incomplete
+    // (they're flagged as "data not available" on the dashboard/repository).
     setBusy(true)
     try {
       const actor = { uid: profile?.uid, name: profile?.name }
@@ -217,7 +218,14 @@ export default function FASRepository() {
                 {pageItems.map((a) => (
                   <tr key={a.id} className="hover:bg-ink-50/70" style={{ boxShadow: `inset 4px 0 0 ${fasColor(a, today)}` }}>
                     <td className="px-4 py-3">
-                      <div className="font-bold text-ink-900">{a.deviceId || a.deviceType}</div>
+                      <div className="flex items-center gap-1.5 font-bold text-ink-900">
+                        {a.deviceId || a.deviceType}
+                        {fasIncomplete(a) && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Data not available — details still need entering">
+                            <AlertTriangle size={11} /> Data N/A
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-ink-500">{a.deviceId ? a.deviceType : (a.location || '—')}</div>
                     </td>
                     <td className="px-4 py-3 text-ink-700">{a.centerName}</td>
@@ -257,8 +265,8 @@ export default function FASRepository() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Device ID / Tag"><input className="input" value={editing.deviceId} onChange={set('deviceId')} placeholder="e.g. MCP-03" /></Field>
               <Field label="Device type"><select className="input" value={editing.deviceType} onChange={set('deviceType')}>{FAS_DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
-              <Field label="Site / Center name *">
-                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} required placeholder="e.g. Tower B" />
+              <Field label="Site / Center name">
+                <SitePicker value={editing.centerName} sites={pickSites} onChange={onSite} placeholder="e.g. Tower B" />
               </Field>
               <Field label="Zone / Loop"><input className="input" value={editing.zone} onChange={set('zone')} placeholder="e.g. Zone 4" /></Field>
               <Field label="Region"><select className="input" value={editing.region} onChange={set('region')}><option value="">—</option>{REGIONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
