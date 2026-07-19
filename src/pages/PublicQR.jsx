@@ -19,6 +19,8 @@ function AssetView({ data }) {
   const isFas = data.assetKind === 'fas'
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  const [otherOpen, setOtherOpen] = useState(false)
+  const [otherText, setOtherText] = useState('')
   const statusLabel = (isFas ? FAS_STATUS_LABEL : AED_STATUS_LABEL)[data.status] || data.status
   const statusColor = (isFas ? FAS_STATUS_COLOR : AED_STATUS_COLOR)[data.status] || '#64748b'
   const defects = ASSET_DEFECTS[data.assetKind] || []
@@ -82,9 +84,28 @@ function AssetView({ data }) {
               <p className="mb-2 text-center text-sm font-semibold text-white/70">Report a defect</p>
               <div className="grid grid-cols-1 gap-2">
                 {defects.map((d) => (
-                  <button key={d} className="btn w-full bg-white/10 text-white hover:bg-white/20" disabled={busy} onClick={() => report(d)}>
-                    <AlertTriangle size={15} /> {d}
-                  </button>
+                  d === 'Other' ? (
+                    <div key={d}>
+                      <button className="btn w-full bg-white/10 text-white hover:bg-white/20" disabled={busy} onClick={() => setOtherOpen((v) => !v)}>
+                        <AlertTriangle size={15} /> Other…
+                      </button>
+                      {otherOpen && (
+                        <div className="mt-2 space-y-2">
+                          <textarea className="w-full rounded-xl bg-white/10 p-3 text-sm text-white placeholder-white/40 outline-none ring-1 ring-white/15 focus:ring-white/40"
+                            rows={2} maxLength={100} placeholder="Describe the defect (max 100 characters)…"
+                            value={otherText} onChange={(e) => setOtherText(e.target.value)} />
+                          <button className="btn-primary w-full" disabled={busy || !otherText.trim()}
+                            onClick={() => report(otherText.trim().slice(0, 100))}>
+                            {busy ? <Spinner size={18} /> : 'Submit report'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button key={d} className="btn w-full bg-white/10 text-white hover:bg-white/20" disabled={busy} onClick={() => report(d)}>
+                      <AlertTriangle size={15} /> {d}
+                    </button>
+                  )
                 ))}
               </div>
               <p className="mt-3 text-center text-xs text-white/40">Reports are reviewed and approved in the {data.orgName || 'organization'} portal.</p>
