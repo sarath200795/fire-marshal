@@ -163,8 +163,11 @@ export default function FASRepository() {
     } catch (err) { toast.error(err.message) } finally { setRemoving(null) }
   }
   // View the QR — or, for admins, mint one first if the record lacks it.
+  // QR codes are only generated for Control Panels (the panel represents the
+  // whole system); detectors, MCPs and hooters don't get their own QR.
   const showQr = async (a) => {
     if (a.qrToken) { setQrFor(a); return }
+    if (a.deviceType !== 'Control Panel') { toast.error('QR codes are only generated for Control Panels'); return }
     if (!isAdmin) { toast.error('Only an admin can generate QR codes'); return }
     setBusy(true)
     try {
@@ -273,7 +276,7 @@ export default function FASRepository() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button className="btn bg-green-600 px-2 py-1.5 text-xs text-white hover:bg-green-700" onClick={() => openService(a)} title="Log service"><Wrench size={14} /></button>
-                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && !isAdmin)} title={a.qrToken ? 'View QR code' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes')}><QrCode size={15} /></button>
+                        <button className="btn-soft px-2 py-1.5" onClick={() => showQr(a)} disabled={busy || (!a.qrToken && (!isAdmin || a.deviceType !== 'Control Panel'))} title={a.qrToken ? 'View QR code' : (a.deviceType !== 'Control Panel' ? 'QR codes are only for Control Panels' : (isAdmin ? 'Generate QR code' : 'Only an admin can generate QR codes'))}><QrCode size={15} /></button>
                         <button className="btn-soft px-2 py-1.5" onClick={() => setEditing(a)} title="Edit"><Pencil size={15} /></button>
                         <button className="btn-soft px-2 py-1.5 text-red-600" onClick={() => setRemoving(a)} title="Delete"><Trash2 size={15} /></button>
                       </div>

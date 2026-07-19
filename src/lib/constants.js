@@ -178,12 +178,15 @@ export const FAS_STATUS_COLOR = {
   [FAS_STATUS.FAULTY]: '#dc2626',
 }
 
-// Defects a public QR scanner can report against a FAS device.
+// Defects a public QR scanner can report against a FAS Control Panel — covers
+// the whole system, including detector and manual-call-point faults.
 export const FAS_DEFECTS = [
   'Battery Discharged',
   'UPS / Power Issue',
   'System Unhealthy',
   'Smoke Detector Not Working',
+  'Heat Detector Not Working',
+  'Manual Call Point (MCP) Faulty',
   'Hooter Not Working',
   'Isolated Zone',
 ]
